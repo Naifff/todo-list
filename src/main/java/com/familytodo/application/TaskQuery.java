@@ -46,6 +46,14 @@ public record TaskQuery(
                 viewer.familyId(), visibilityLimit(viewer), null, viewer.id(), OPEN_ONLY);
     }
 
+    /**
+     * Системная выборка: открытые задачи участника независимо от того, кто спрашивает. Нужна при
+     * исключении из семьи — там «смотрящего» нет вовсе.
+     */
+    public static TaskQuery openAssignedTo(long familyId, long memberId) {
+        return new TaskQuery(familyId, null, memberId, null, OPEN_ONLY);
+    }
+
     public TaskQuery withStatuses(Set<TaskStatus> newStatuses) {
         return new TaskQuery(familyId, visibleToMemberId, assigneeId, creatorId, newStatuses);
     }
