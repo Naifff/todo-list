@@ -60,11 +60,20 @@ class MemberTest {
     /** Исключённому уведомления не шлём, даже если бота он не блокировал. */
     @Test
     void removedMemberIsNotReachable() {
-        Member member = member();
-
-        member.markRemoved();
+        Member member =
+                Member.restore(
+                        10L,
+                        1L,
+                        100000001L,
+                        100000001L,
+                        "Мама",
+                        Role.PARENT,
+                        MemberStatus.REMOVED,
+                        false,
+                        NOW);
 
         assertThat(member.isReachable()).isFalse();
+        assertThat(member.isActive()).isFalse();
     }
 
     @Test

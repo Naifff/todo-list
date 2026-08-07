@@ -123,11 +123,6 @@ public final class Member {
         this.role = requireRole(newRole);
     }
 
-    /** Только для тестов и восстановления: обычный путь исключения идёт через {@link Family}. */
-    void markRemoved() {
-        this.status = MemberStatus.REMOVED;
-    }
-
     public boolean isActive() {
         return status == MemberStatus.ACTIVE;
     }

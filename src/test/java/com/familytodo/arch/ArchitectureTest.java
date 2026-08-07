@@ -70,9 +70,8 @@ class ArchitectureTest {
      * Бот ходит в хранилище только через юзкейсы. Иначе правила прав, живущие в домене, окажутся
      * в обход — хендлер прочитает задачу сам и покажет то, чего показывать нельзя.
      *
-     * <p>{@code allowEmptyShould} нужен, пока пакет {@code adapter.telegram} не создан (задача 11):
-     * ArchUnit по умолчанию считает правило без единого подходящего класса ошибкой. С появлением
-     * первого хендлера правило начинает работать само.
+     * <p>С задачи 11 пакет непустой, поэтому {@code allowEmptyShould} здесь снят: правило проверяет
+     * реальные классы, а не проходит вхолостую.
      */
     @Test
     void telegramAdapterDoesNotReachPersistenceDirectly() {
@@ -82,7 +81,6 @@ class ArchitectureTest {
                 .should()
                 .dependOnClassesThat()
                 .resideInAnyPackage("..adapter.persistence..")
-                .allowEmptyShould(true)
                 .check(CLASSES);
     }
 
