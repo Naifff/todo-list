@@ -29,14 +29,15 @@ public sealed interface DialogState {
      * <p>Срок несём с собой: время серии — это время выбранного срока, спрашивать его отдельно
      * значило бы добавить шаг ради того, что человек только что назвал.
      */
-    record AwaitingRepeat(String title, long assigneeId, java.time.Instant dueAt)
+    record AwaitingRepeat(
+            String title, long assigneeId, com.familytodo.application.DueDateParser.Plan plan)
             implements DialogState {}
 
     /** {@code /new}: выбрали «Свои дни» — копим отмеченные, пока не нажмут «Готово». */
     record ChoosingDays(
             String title,
             long assigneeId,
-            java.time.Instant dueAt,
+            com.familytodo.application.DueDateParser.Plan plan,
             java.util.Set<java.time.DayOfWeek> days)
             implements DialogState {
 
