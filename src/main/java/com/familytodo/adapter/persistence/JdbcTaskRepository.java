@@ -121,8 +121,22 @@ public class JdbcTaskRepository implements TaskRepository {
             params.add(query.creatorId());
         }
 
+        // момент дела — начало интервала, иначе срок; фильтр в SQL, а не отсевом
+        if (query.from() != null) {
+            sql.append(" and coalesce(t.starts_at, t.due_at) >= ?");
+            params.add(query.from().toEpochMilli());
+        }
+        if (query.to() != null) {
+            sql.append(" and coalesce(t.starts_at, t.due_at) < ?");
+            params.add(query.to().toEpochMilli());
+        }
+        if (query.undatedOnly()) {
+            sql.append(" and t.starts_at is null and t.due_at is null");
+        }
+
         // сначала со сроком по возрастанию, бессрочные в конце
-        sql.append(" order by coalesce(t.due_at, 9223372036854775807), t.id");
+        sql.append(
+                " order by coalesce(t.starts_at, t.due_at, 9223372036854775807), t.id");
 
         return jdbc.sql(sql.toString()).params(params).query(TaskRowMapper.INSTANCE).list();
     }

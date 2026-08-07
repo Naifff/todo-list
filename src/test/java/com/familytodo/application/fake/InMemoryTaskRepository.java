@@ -3,6 +3,7 @@ package com.familytodo.application.fake;
 import com.familytodo.application.TaskQuery;
 import com.familytodo.application.port.TaskRepository;
 import com.familytodo.domain.Task;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -46,7 +47,11 @@ public final class InMemoryTaskRepository implements TaskRepository {
                 found.add(task);
             }
         }
-        found.sort(Comparator.comparing(Task::id));
+        found.sort(
+                Comparator.<Task, Instant>comparing(
+                                InMemoryTaskRepository::moment,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(Task::id));
         return found;
     }
 
@@ -70,8 +75,25 @@ public final class InMemoryTaskRepository implements TaskRepository {
         }
         if (query.visibleToMemberId() != null) {
             long viewer = query.visibleToMemberId();
-            return task.assignee().memberId() == viewer || task.creatorId() == viewer;
+            if (task.assignee().memberId() != viewer && task.creatorId() != viewer) {
+                return false;
+            }
         }
-        return true;
+
+        // те же условия, что в SQL: фейк, который прощает больше базы, обесценивает
+        // все тесты юзкейсов разом
+        Instant moment = moment(task);
+        if (query.undatedOnly()) {
+            return moment == null;
+        }
+        if (query.from() != null && (moment == null || moment.isBefore(query.from()))) {
+            return false;
+        }
+        return query.to() == null || (moment != null && moment.isBefore(query.to()));
+    }
+
+    /** Момент дела — начало интервала, иначе срок. Совпадает с coalesce в запросе. */
+    private static Instant moment(Task task) {
+        return task.startsAt() != null ? task.startsAt() : task.dueAt();
     }
 }

@@ -50,6 +50,7 @@ public final class Texts {
             Что я умею:
 
             /new — попросить кого-то о деле
+            /agenda — расписание на день, 3 дня, неделю, месяц
             /my — что просили у меня
             /assigned — что я попросил у других
             /all — все дела семьи (только для родителей)
@@ -92,6 +93,8 @@ public final class Texts {
     public static final String MINE_EMPTY = "У тебя ничего не просят.";
     public static final String REQUESTED_EMPTY = "Ты пока ни о чём не просил.";
     public static final String ALL_EMPTY = "Открытых дел нет.";
+
+    public static final String AGENDA_EMPTY = "На этот срок дел нет.";
 
     public static final String ALL_IS_FOR_PARENTS = "Весь список семьи видят только родители.";
 
