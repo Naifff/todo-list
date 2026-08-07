@@ -214,9 +214,9 @@ class NewTaskHandlerTest {
             handler.handle(callback(mom), due(NewTaskKeyboards.CUSTOM));
             sender.clear();
 
-            handler.continueDialog(text(mom, "когда-нибудь"));
+            handler.continueDialog(text(mom, "25:00"));
 
-            assertThat(sender.texts).containsExactly(Texts.DUE_NOT_PARSED);
+            assertThat(sender.texts).containsExactly(Texts.SLOT_NOT_PARSED);
             assertThat(tasks.find(TaskQuery.visibleTo(mom))).isEmpty();
             assertThat(dialogs.get(mom.telegramUserId()))
                     .containsInstanceOf(DialogState.AwaitingCustomDueDate.class);
@@ -387,7 +387,10 @@ class NewTaskHandlerTest {
             assertThat(dialogs.get(mom.telegramUserId()))
                     .contains(
                             new DialogState.ChoosingDays(
-                                    "Вынести мусор", kid.id(), tomorrow(), Set.of(DayOfWeek.TUESDAY)));
+                                    "Вынести мусор",
+                                    kid.id(),
+                                    deadline(tomorrow()),
+                                    Set.of(DayOfWeek.TUESDAY)));
             assertThat(series.findActive(mom.familyId())).isEmpty();
         }
 
@@ -401,7 +404,7 @@ class NewTaskHandlerTest {
             assertThat(dialogs.get(mom.telegramUserId()))
                     .contains(
                             new DialogState.ChoosingDays(
-                                    "Вынести мусор", kid.id(), tomorrow(), Set.of()));
+                                    "Вынести мусор", kid.id(), deadline(tomorrow()), Set.of()));
         }
 
         @Test
@@ -458,7 +461,130 @@ class NewTaskHandlerTest {
         }
     }
 
+
+    /**
+     * Шаг «Время и место»: он заменил прежнюю «Свою дату» и умеет больше — интервал и место одной
+     * строкой. Отдельными шагами это стоило бы двух лишних нажатий на каждом деле, включая те,
+     * где никакого интервала нет.
+     */
+    @Nested
+    class TimeAndPlace {
+
+        @Test
+        void buttonIsOfferedInsteadOfCustomDate() {
+            handler.handle(command(mom));
+            handler.continueDialog(text(mom, "Погулять"));
+            handler.handle(callback(mom), assignee(kid.id()));
+
+            List<String> labels =
+                    sender.markups.getLast().getKeyboard().stream()
+                            .flatMap(row -> row.stream())
+                            .map(button -> button.getText())
+                            .toList();
+            assertThat(labels).contains("Время и место").doesNotContain("Своя дата");
+        }
+
+        @Test
+        void intervalBecomesOccupiedTimeAndPlace() {
+            uptoSlot();
+
+            handler.continueDialog(text(mom, "18:00-19:00 парк"));
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.ONCE));
+
+            Task created = tasks.find(TaskQuery.visibleTo(mom)).getFirst();
+            assertThat(created.startsAt()).isEqualTo(Instant.parse("2026-08-07T15:00:00Z"));
+            assertThat(created.endsAt()).isEqualTo(Instant.parse("2026-08-07T16:00:00Z"));
+            assertThat(created.location()).isEqualTo("парк");
+            assertThat(created.dueAt())
+                    .describedAs("интервал — занятое время, а не срок")
+                    .isNull();
+        }
+
+        @Test
+        void singleTimeStaysADeadline() {
+            uptoSlot();
+
+            handler.continueDialog(text(mom, "18:30"));
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.ONCE));
+
+            Task created = tasks.find(TaskQuery.visibleTo(mom)).getFirst();
+            assertThat(created.dueAt()).isEqualTo(Instant.parse("2026-08-07T15:30:00Z"));
+            assertThat(created.startsAt()).isNull();
+        }
+
+        /** Всё, что понимала «Своя дата», обязано пониматься и здесь. */
+        @Test
+        void oldCustomDateInputStillWorks() {
+            uptoSlot();
+
+            handler.continueDialog(text(mom, "15.08 18:30"));
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.ONCE));
+
+            assertThat(tasks.find(TaskQuery.visibleTo(mom)).getFirst().dueAt())
+                    .isEqualTo(Instant.parse("2026-08-15T15:30:00Z"));
+        }
+
+        /** Место без времени: дело без даты, но с местом — и шага повторения не будет. */
+        @Test
+        void placeOnlyCreatesAnUndatedTask() {
+            uptoSlot();
+
+            handler.continueDialog(text(mom, "Zoom"));
+
+            Task created = tasks.find(TaskQuery.visibleTo(mom)).getFirst();
+            assertThat(created.location()).isEqualTo("Zoom");
+            assertThat(created.dueAt()).isNull();
+            assertThat(dialogs.get(mom.telegramUserId())).isEmpty();
+        }
+
+        /** Дело с интервалом можно сделать повторяющимся — время серии берётся из начала. */
+        @Test
+        void intervalCanBecomeARecurringSeries() {
+            uptoSlot();
+            handler.continueDialog(text(mom, "08:00-08:40 школа"));
+
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.WEEKDAYS));
+
+            assertThat(series.findActive(mom.familyId())).hasSize(1);
+            assertThat(series.findActive(mom.familyId()).getFirst().startTime())
+                    .isEqualTo(java.time.LocalTime.of(8, 0));
+        }
+
+        /** Текст без времени — это место, а не ошибка: «просто Zoom» законный ввод. */
+        @Test
+        void plainTextBecomesAPlaceRatherThanAnError() {
+            uptoSlot();
+
+            handler.continueDialog(text(mom, "у бабушки во дворе"));
+
+            Task created = tasks.find(TaskQuery.visibleTo(mom)).getFirst();
+            assertThat(created.location()).isEqualTo("у бабушки во дворе");
+            assertThat(created.dueAt()).isNull();
+        }
+
+        @Test
+        void unparseableInputKeepsTheDialogAlive() {
+            uptoSlot();
+
+            handler.continueDialog(text(mom, "18:99"));
+
+            assertThat(sender.texts).contains(Texts.SLOT_NOT_PARSED);
+            assertThat(dialogs.get(mom.telegramUserId()))
+                    .containsInstanceOf(DialogState.AwaitingCustomDueDate.class);
+            assertThat(tasks.find(TaskQuery.visibleTo(mom))).isEmpty();
+        }
+
+        private void uptoSlot() {
+            handler.handle(command(mom));
+            handler.continueDialog(text(mom, "Погулять"));
+            handler.handle(callback(mom), assignee(kid.id()));
+            handler.handle(callback(mom), due(NewTaskKeyboards.CUSTOM));
+            sender.clear();
+        }
+    }
+
     // --- вспомогательное ---
+
 
 
     private void startAndName(Member member, String title) {
@@ -468,6 +594,10 @@ class NewTaskHandlerTest {
 
     private static CallbackData assignee(long memberId) {
         return CallbackData.of(NewTaskKeyboards.PREFIX, NewTaskKeyboards.ASSIGNEE, memberId);
+    }
+
+    private static com.familytodo.application.DueDateParser.Plan deadline(java.time.Instant dueAt) {
+        return new com.familytodo.application.DueDateParser.Plan(dueAt, null, null, null);
     }
 
     private java.time.Instant tomorrow() {
