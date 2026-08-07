@@ -57,6 +57,9 @@ testing {
                 implementation("org.springframework.boot:spring-boot-starter-test")
                 implementation("org.springframework.boot:spring-boot-starter-jdbc")
                 implementation("org.springframework.boot:spring-boot-starter-flyway")
+                // нужны PollingSchedulingIT: он поднимает заглушку Bot API и смотрит,
+                // как библиотека планирует опрос
+                implementation(libs.telegrambots.longpolling)
                 runtimeOnly("org.xerial:sqlite-jdbc")
             }
             targets.all {

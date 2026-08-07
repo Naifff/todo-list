@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 
 import com.familytodo.adapter.telegram.BotRequest;
 import com.familytodo.adapter.telegram.BotSender;
+import com.familytodo.adapter.telegram.BotSettings;
 import com.familytodo.adapter.telegram.CallbackData;
 import com.familytodo.adapter.telegram.keyboard.TimezoneKeyboard;
 import com.familytodo.adapter.telegram.view.FamilyView;
@@ -65,7 +66,11 @@ class FamilyHandlerTest {
         familyService = new FamilyService(families, members, repository, notifier, clock);
         inviteService = new InviteService(invites, members, new InviteCodeGenerator(), clock);
         taskService = new TaskService(repository, members, notifier, clock);
-        handler = new FamilyHandler(familyService, inviteService, sender, "FamilyTODO_bot");
+        handler = new FamilyHandler(
+                familyService,
+                inviteService,
+                sender,
+                BotSettings.of("1:test-token", "FamilyTODO_bot"));
 
         mom = familyService.createFamily(100000001L, 100000001L, "Мама", "Румянцевы", MOSCOW);
         dad = join(100001L, "Папа", Role.PARENT);

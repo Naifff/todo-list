@@ -21,7 +21,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  */
 @SpringBootTest(
         properties = {
-            "telegram.bot.token=startup-test",
+            "telegram.bot.token=1:startup-test",
             "telegram.bot.username=startup_test_bot",
             "telegram.bot.polling.enabled=false",
             "spring.datasource.url=jdbc:sqlite::memory:?foreign_keys=true"

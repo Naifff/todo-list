@@ -1,0 +1,20 @@
+# Профиль включается юнитом systemd: SPRING_PROFILES_ACTIVE=prod в /etc/family-todo/env.
+# Здесь только то, что отличается от application.yml.
+
+spring:
+  datasource:
+    # Каталог службы, а не рабочий каталог процесса: при ProtectSystem=strict
+    # писать можно только в ReadWritePaths. WAL кладёт рядом -wal и -shm,
+    # поэтому доступен должен быть каталог целиком, а не один файл.
+    url: jdbc:sqlite:${DB_PATH:/var/lib/family-todo/family-todo.db}?foreign_keys=true&busy_timeout=5000&journal_mode=WAL
+
+logging:
+  level:
+    # root оставлен на INFO намеренно. Строки Flyway — единственное доказательство,
+    # что миграции действительно выполнялись: однажды они не выполнялись вовсе, и
+    # заметить это удалось только по живому запуску.
+    root: INFO
+    com.familytodo: INFO
+  pattern:
+    # время и уровень добавляет journald, дублировать их в строке незачем
+    console: "%logger{36} - %msg%n"

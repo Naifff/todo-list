@@ -17,7 +17,7 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  */
 @SpringBootTest(
         properties = {
-            "telegram.bot.token=spike-token",
+            "telegram.bot.token=1:spike-token",
             "telegram.bot.username=spike_bot",
             "telegram.bot.polling.enabled=false",
             // база в памяти: юнит-прогон не должен оставлять файлов в репозитории
