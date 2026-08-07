@@ -1,5 +1,6 @@
 package com.familytodo.adapter.telegram;
 
+import java.io.ByteArrayInputStream;
 import java.io.Serializable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -7,6 +8,8 @@ import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -59,6 +62,35 @@ public class BotSender {
                         .parseMode("HTML")
                         .replyMarkup(markup)
                         .build());
+    }
+
+    /**
+     * Календарь уходит фотографией, а не документом: документ показывается карточкой файла, и,
+     * чтобы увидеть картинку, её пришлось бы скачивать — обзорный режим при этом теряет смысл.
+     *
+     * @return {@code false}, если получатель недостижим навсегда — как и у обычной отправки
+     */
+    public boolean sendPhoto(long chatId, byte[] png, String fileName, String caption) {
+        SendPhoto photo =
+                SendPhoto.builder()
+                        .chatId(chatId)
+                        .photo(new InputFile(new ByteArrayInputStream(png), fileName))
+                        .caption(caption)
+                        .parseMode("HTML")
+                        .build();
+        try {
+            client.execute(photo);
+            return true;
+        } catch (TelegramApiRequestException e) {
+            if (isPermanentlyUnreachable(e)) {
+                return false;
+            }
+            log.warn("telegram photo call failed with code {}", e.getErrorCode());
+            return true;
+        } catch (TelegramApiException e) {
+            log.warn("telegram photo call failed: {}", e.getClass().getSimpleName());
+            return true;
+        }
     }
 
     public void answerCallback(String callbackQueryId, String notice) {

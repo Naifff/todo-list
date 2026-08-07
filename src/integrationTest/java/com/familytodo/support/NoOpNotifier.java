@@ -37,5 +37,10 @@ public class NoOpNotifier implements Notifier {
     public void taskDue(Member recipient, Task task) {}
 
     @Override
-    public void digest(Member recipient, List<Task> tasks, List<Member> family, ZoneId zone) {}
+    public void digest(
+            Member recipient,
+            List<Task> tasks,
+            List<Member> family,
+            ZoneId zone,
+            int horizonDays) {}
 }

@@ -23,6 +23,9 @@ public final class FamilyView {
     public static final String TIMEZONE = "tz";
     public static final String DIGEST = "digest";
 
+    /** На сколько дней вперёд собирать утренний список. */
+    public static final String HORIZON = "horiz";
+
     /** Часы, из которых выбирается дайджест. Ночь и день не предлагаем — это утреннее письмо. */
     public static final List<Integer> DIGEST_HOURS = List.of(6, 7, 8, 9, 10, 11);
 
@@ -92,6 +95,7 @@ public final class FamilyView {
                         new InlineKeyboardRow(
                                 button("Часовой пояс", TIMEZONE, "ask"),
                                 button("Время дайджеста", DIGEST, "ask")))
+                .keyboardRow(new InlineKeyboardRow(button("Горизонт дайджеста", HORIZON, "ask")))
                 .keyboardRow(new InlineKeyboardRow(button("← Назад", MENU, "0")))
                 .build();
     }
@@ -105,6 +109,27 @@ public final class FamilyView {
                 .keyboardRow(row)
                 .keyboardRow(new InlineKeyboardRow(button("← Назад", MENU, "0")))
                 .build();
+    }
+
+    /** Значения берутся у домена: их проверяет правило, а не разметка кнопок. */
+    public static InlineKeyboardMarkup digestHorizons() {
+        InlineKeyboardRow row = new InlineKeyboardRow();
+        for (int days : Family.DIGEST_HORIZONS) {
+            row.add(button(horizonLabel(days), HORIZON, Integer.toString(days)));
+        }
+        return InlineKeyboardMarkup.builder()
+                .keyboardRow(row)
+                .keyboardRow(new InlineKeyboardRow(button("← Назад", MENU, "0")))
+                .build();
+    }
+
+    private static String horizonLabel(int days) {
+        return switch (days) {
+            case 1 -> "День";
+            case 3 -> "3 дня";
+            case 7 -> "Неделя";
+            default -> days + " дней";
+        };
     }
 
     private static InlineKeyboardButton button(String label, String action, String argument) {

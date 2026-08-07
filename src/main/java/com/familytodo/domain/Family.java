@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Семья: настройки и правила, касающиеся состава.
@@ -17,6 +18,18 @@ public final class Family {
 
     private static final LocalTime DEFAULT_DIGEST_TIME = LocalTime.of(8, 0);
 
+    /**
+     * Горизонты, на которые можно попросить утренний список.
+     *
+     * <p>Набор живёт в домене, а не в клавиатуре бота: значение приходит из {@code callback_data},
+     * то есть от клиента, и проверять его должно правило, а не разметка кнопок. Совпадение с
+     * горизонтами {@code /agenda} — совпадение по смыслу, не связь по коду.
+     */
+    public static final List<Integer> DIGEST_HORIZONS = List.of(1, 3, 7, 30);
+
+    /** По умолчанию — дела на сегодня: утренний список именно про сегодняшний день. */
+    private static final int DEFAULT_DIGEST_HORIZON_DAYS = 1;
+
     private final long id;
     private final Instant createdAt;
 
@@ -24,6 +37,7 @@ public final class Family {
     private ZoneId timezone;
     private LocalTime digestTime;
     private LocalDate lastDigestDate;
+    private int digestHorizonDays;
 
     private Family(
             long id,
@@ -31,12 +45,14 @@ public final class Family {
             ZoneId timezone,
             LocalTime digestTime,
             LocalDate lastDigestDate,
+            int digestHorizonDays,
             Instant createdAt) {
         this.id = id;
         this.name = requireName(name);
         this.timezone = requireTimezone(timezone);
         this.digestTime = requireDigestTime(digestTime);
         this.lastDigestDate = lastDigestDate;
+        this.digestHorizonDays = requireDigestHorizon(digestHorizonDays);
         this.createdAt = createdAt;
     }
 
@@ -47,7 +63,13 @@ public final class Family {
     public static Family create(long id, String name, ZoneId timezone, Instant now) {
         ZoneId zone = requireTimezone(timezone);
         return new Family(
-                id, name, zone, DEFAULT_DIGEST_TIME, LocalDate.ofInstant(now, zone), now);
+                id,
+                name,
+                zone,
+                DEFAULT_DIGEST_TIME,
+                LocalDate.ofInstant(now, zone),
+                DEFAULT_DIGEST_HORIZON_DAYS,
+                now);
     }
 
     public static Family restore(
@@ -56,8 +78,10 @@ public final class Family {
             ZoneId timezone,
             LocalTime digestTime,
             LocalDate lastDigestDate,
+            int digestHorizonDays,
             Instant createdAt) {
-        return new Family(id, name, timezone, digestTime, lastDigestDate, createdAt);
+        return new Family(
+                id, name, timezone, digestTime, lastDigestDate, digestHorizonDays, createdAt);
     }
 
     /**
@@ -97,6 +121,12 @@ public final class Family {
     public void changeDigestTime(Actor actor, LocalTime newDigestTime) {
         requireParentOfThisFamily(actor);
         this.digestTime = requireDigestTime(newDigestTime);
+    }
+
+    /** На сколько дней вперёд собирать утренний список. */
+    public void changeDigestHorizon(Actor actor, int days) {
+        requireParentOfThisFamily(actor);
+        this.digestHorizonDays = requireDigestHorizon(days);
     }
 
     public void rename(Actor actor, String newName) {
@@ -172,6 +202,10 @@ public final class Family {
         return lastDigestDate;
     }
 
+    public int digestHorizonDays() {
+        return digestHorizonDays;
+    }
+
     public Instant createdAt() {
         return createdAt;
     }
@@ -188,6 +222,13 @@ public final class Family {
             throw new IllegalArgumentException("timezone is required");
         }
         return timezone;
+    }
+
+    private static int requireDigestHorizon(int days) {
+        if (!DIGEST_HORIZONS.contains(days)) {
+            throw new IllegalArgumentException("unsupported digest horizon " + days);
+        }
+        return days;
     }
 
     private static LocalTime requireDigestTime(LocalTime digestTime) {

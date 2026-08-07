@@ -1,10 +1,12 @@
 package com.familytodo.adapter.telegram.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import com.familytodo.adapter.telegram.BotRequest;
 import com.familytodo.adapter.telegram.BotSender;
+import com.familytodo.adapter.telegram.BotSettings;
 import com.familytodo.adapter.telegram.CallbackData;
 import com.familytodo.adapter.telegram.keyboard.TimezoneKeyboard;
 import com.familytodo.adapter.telegram.view.FamilyView;
@@ -19,6 +21,7 @@ import com.familytodo.application.fake.InMemoryInviteRepository;
 import com.familytodo.application.fake.InMemoryMemberRepository;
 import com.familytodo.application.fake.InMemoryTaskRepository;
 import com.familytodo.domain.InviteCodeGenerator;
+import com.familytodo.domain.Family;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.MemberStatus;
 import com.familytodo.domain.Role;
@@ -65,7 +68,11 @@ class FamilyHandlerTest {
         familyService = new FamilyService(families, members, repository, notifier, clock);
         inviteService = new InviteService(invites, members, new InviteCodeGenerator(), clock);
         taskService = new TaskService(repository, members, notifier, clock);
-        handler = new FamilyHandler(familyService, inviteService, sender, "FamilyTODO_bot");
+        handler = new FamilyHandler(
+                familyService,
+                inviteService,
+                sender,
+                BotSettings.of("1:test-token", "FamilyTODO_bot"));
 
         mom = familyService.createFamily(100000001L, 100000001L, "Мама", "Румянцевы", MOSCOW);
         dad = join(100001L, "Папа", Role.PARENT);
@@ -253,6 +260,53 @@ class FamilyHandlerTest {
         }
 
         @Test
+        void digestHorizonChangeIsStored() {
+            handler.handle(callback(mom), action(FamilyView.HORIZON, "7"));
+
+            assertThat(families.findById(mom.familyId()).orElseThrow().digestHorizonDays())
+                    .isEqualTo(7);
+        }
+
+        @Test
+        void settingsMenuOffersTheHorizon() {
+            handler.handle(callback(mom), action(FamilyView.SETTINGS, "0"));
+
+            assertThat(buttonLabels()).anyMatch(label -> label.contains("Горизонт"));
+        }
+
+        @Test
+        void horizonMenuOffersEveryAllowedValue() {
+            handler.handle(callback(mom), action(FamilyView.HORIZON, "ask"));
+
+            assertThat(sender.markups.getLast().getKeyboard().getFirst())
+                    .hasSize(Family.DIGEST_HORIZONS.size());
+        }
+
+        @Test
+        void childCannotChangeTheHorizon() {
+            handler.handle(callback(kid), action(FamilyView.HORIZON, "7"));
+
+            assertThat(sender.texts).containsExactly(Texts.SETTINGS_ARE_FOR_PARENTS);
+            assertThat(families.findById(mom.familyId()).orElseThrow().digestHorizonDays())
+                    .isEqualTo(1);
+        }
+
+        /** Значение приходит из callback_data — то есть от клиента, и доверять ему нельзя. */
+        @Test
+        void forgedHorizonIsRejected() {
+            assertThatThrownBy(() -> handler.handle(callback(mom), action(FamilyView.HORIZON, "365")))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThat(families.findById(mom.familyId()).orElseThrow().digestHorizonDays())
+                    .isEqualTo(1);
+        }
+
+        @Test
+        void nonNumericHorizonIsRejected() {
+            assertThatThrownBy(() -> handler.handle(callback(mom), action(FamilyView.HORIZON, "неделя")))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
         void childCannotChangeSettings() {
             handler.handle(callback(kid), action(FamilyView.DIGEST, "7"));
 
@@ -290,6 +344,14 @@ class FamilyHandlerTest {
     }
 
     // --- вспомогательное ---
+
+    private List<String> buttonLabels() {
+        return sender.markups.getLast().getKeyboard().stream()
+                .flatMap(row -> row.stream())
+                .map(button -> button.getText())
+                .toList();
+    }
+
 
     private Member join(long telegramId, String name, Role role) {
         return members.save(

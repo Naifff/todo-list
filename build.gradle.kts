@@ -40,6 +40,9 @@ testing {
     suites {
         val test = getByName<JvmTestSuite>("test") {
             useJUnitJupiter()
+            // без headless отрисовка календаря на macOS дёргает оконную подсистему,
+            // а на сервере сборки её нет вовсе
+            targets.all { testTask.configure { systemProperty("java.awt.headless", "true") } }
             dependencies {
                 implementation("org.springframework.boot:spring-boot-starter-test")
                 implementation(libs.archunit.junit5)
@@ -57,10 +60,16 @@ testing {
                 implementation("org.springframework.boot:spring-boot-starter-test")
                 implementation("org.springframework.boot:spring-boot-starter-jdbc")
                 implementation("org.springframework.boot:spring-boot-starter-flyway")
+                // нужны PollingSchedulingIT: он поднимает заглушку Bot API и смотрит,
+                // как библиотека планирует опрос
+                implementation(libs.telegrambots.longpolling)
                 runtimeOnly("org.xerial:sqlite-jdbc")
             }
             targets.all {
-                testTask.configure { shouldRunAfter(test) }
+                testTask.configure {
+                    shouldRunAfter(test)
+                    systemProperty("java.awt.headless", "true")
+                }
             }
         }
     }

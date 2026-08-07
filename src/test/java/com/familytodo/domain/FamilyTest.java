@@ -238,6 +238,60 @@ class FamilyTest {
         }
 
         @Test
+        void newFamilyGetsTodayOnlyDigest() {
+            assertThat(family().digestHorizonDays()).isEqualTo(1);
+        }
+
+        @Test
+        void parentChangesTheDigestHorizon() {
+            Family family = family();
+
+            family.changeDigestHorizon(mom().asActor(), 7);
+
+            assertThat(family.digestHorizonDays()).isEqualTo(7);
+        }
+
+        @Test
+        void childCannotChangeTheDigestHorizon() {
+            assertThatThrownBy(() -> family().changeDigestHorizon(kid().asActor(), 7))
+                    .isInstanceOf(DomainException.NotPermitted.class);
+        }
+
+        @Test
+        void horizonIsDeniedForActorFromAnotherFamily() {
+            Actor stranger = Actor.member(10L, 999L, Role.PARENT);
+
+            assertThatThrownBy(() -> family().changeDigestHorizon(stranger, 7))
+                    .isInstanceOf(DomainException.NotPermitted.class);
+        }
+
+        /**
+         * Значение приходит из callback_data, то есть от клиента. Произвольное число превратилось бы
+         * в выборку на любой срок — и в дайджест длиной с год.
+         */
+        @Test
+        void horizonOutsideTheAllowedSetIsRejected() {
+            Family family = family();
+
+            for (int wrong : new int[] {0, -1, 2, 5, 31, 365}) {
+                assertThatThrownBy(() -> family.changeDigestHorizon(mom().asActor(), wrong))
+                        .describedAs("горизонт %d", wrong)
+                        .isInstanceOf(IllegalArgumentException.class);
+            }
+            assertThat(family.digestHorizonDays()).isEqualTo(1);
+        }
+
+        @Test
+        void everyOfferedHorizonIsAccepted() {
+            Family family = family();
+
+            for (int allowed : Family.DIGEST_HORIZONS) {
+                family.changeDigestHorizon(mom().asActor(), allowed);
+                assertThat(family.digestHorizonDays()).isEqualTo(allowed);
+            }
+        }
+
+        @Test
         void digestIsMarkedSentForFamilyLocalDate() {
             Family family = family();
 

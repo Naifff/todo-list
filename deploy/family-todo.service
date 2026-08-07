@@ -1,0 +1,55 @@
+[Unit]
+Description=Family todo Telegram bot
+Documentation=https://github.com/Naifff/todo-list
+# База — локальный файл, ждать её не нужно. Ждём сеть: без неё первый же
+# getUpdates упрётся в резолвер, и служба уйдёт в рестарты на пустом месте.
+After=network-online.target
+Wants=network-online.target
+
+# Без ограничения рестартов ошибка старта даёт плотный цикл — ровно ту нагрузку,
+# от которой мы бережём соседский VPN. Пять попыток за пять минут, дальше стоп.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=familytodo
+Group=familytodo
+WorkingDirectory=/var/lib/family-todo
+
+# Секреты файлом, а не в командной строке: аргументы процесса видны в ps всем.
+# Права на файл — 600, владелец familytodo.
+EnvironmentFile=/etc/family-todo/env
+Environment=SPRING_PROFILES_ACTIVE=prod
+
+# MaxRAMPercentage считается от лимита cgroup, то есть от MemoryMax ниже.
+# 60% от 512M — это 307M кучи; остальное уходит на метапространство, стеки и
+# кодкеш, которые в лимит тоже входят. 70% оставили бы ~150M на всё остальное,
+# и первый же всплеск дал бы OOM-kill вместо GC.
+# 70% из плана заменены на 60 сознательно — арифметика выше.
+# ExitOnOutOfMemoryError: лучше честный перезапуск, чем служба, ползающая по GC.
+# java.awt.headless: календарь рисуется через Java2D, и без флага JVM ищет
+# оконную подсистему, которой на сервере нет.
+ExecStart=/usr/bin/java -XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError -Djava.awt.headless=true -jar /opt/family-todo/app.jar
+
+Restart=on-failure
+RestartSec=10
+
+# Жёсткий лимит: превышение MemoryMax означает OOM-kill, а не троттлинг.
+# Это защита соседа по машине, а не оптимизация.
+MemoryMax=512M
+CPUQuota=50%
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+# При ProtectSystem=strict вся файловая система только для чтения. Открываем
+# каталог целиком, а не файл базы: WAL создаёт рядом -wal и -shm.
+ReadWritePaths=/var/lib/family-todo
+
+SyslogIdentifier=family-todo
+
+[Install]
+WantedBy=multi-user.target

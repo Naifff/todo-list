@@ -20,8 +20,8 @@ spring:
 
 telegram:
   bot:
-    token: ${BOT_TOKEN}
-    username: ${BOT_USERNAME}
+    token: ${BOT_TOKEN:}
+    username: ${BOT_USERNAME:}
 
 logging:
   level:

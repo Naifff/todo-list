@@ -103,6 +103,12 @@ public class FamilyService {
         return families.save(family);
     }
 
+    public Family changeDigestHorizon(Member actor, int days) {
+        Family family = family(actor);
+        family.changeDigestHorizon(actor.asActor(), days);
+        return families.save(family);
+    }
+
     public List<Member> roster(Member viewer) {
         return members.findActive(viewer.familyId());
     }

@@ -64,7 +64,8 @@ public final class FakeNotifier implements Notifier {
             Member recipient,
             List<Task> tasks,
             List<Member> family,
-            java.time.ZoneId zone) {
+            java.time.ZoneId zone,
+            int horizonDays) {
         sent.add(new Sent(Kind.DIGEST, recipient.id(), tasks.size(), null));
     }
 

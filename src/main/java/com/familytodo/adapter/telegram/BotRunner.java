@@ -3,7 +3,6 @@ package com.familytodo.adapter.telegram;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -38,10 +37,10 @@ public class BotRunner {
     public BotRunner(
             TelegramBotsLongPollingApplication application,
             UpdateRouter router,
-            @Value("${telegram.bot.token}") String token) {
+            BotSettings settings) {
         this.application = application;
         this.router = router;
-        this.token = token;
+        this.token = settings.token();
     }
 
     @EventListener(ApplicationReadyEvent.class)

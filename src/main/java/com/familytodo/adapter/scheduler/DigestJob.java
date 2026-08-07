@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,7 +93,7 @@ public class DigestJob {
             if (!recipient.isReachable()) {
                 continue;
             }
-            List<Task> visible = tasks.find(TaskQuery.visibleTo(recipient));
+            List<Task> visible = withinHorizon(recipient, family, now);
             if (visible.isEmpty()) {
                 // пустой дайджест не отправляем: сообщение «дел нет» это шум, а не польза
                 continue;
@@ -102,9 +103,28 @@ public class DigestJob {
         log.info("digest sent for family {}", family.id());
     }
 
+    /**
+     * Что попадает в утренний список.
+     *
+     * <p>Горизонт ограничивает только <b>вперёд</b>. Назад его нет: просроченное с ростом срока не
+     * становится менее важным, а дела без даты не с чем сравнивать — «купить хлеб» не обещано ни на
+     * какой день, но из семейного списка от этого не исчезает.
+     */
+    private List<Task> withinHorizon(Member recipient, Family family, Instant now) {
+        Instant until =
+                family.today(now)
+                        .plusDays(family.digestHorizonDays())
+                        .atStartOfDay(family.timezone())
+                        .toInstant();
+
+        List<Task> visible = new ArrayList<>(tasks.find(TaskQuery.inRange(recipient, null, until)));
+        visible.addAll(tasks.find(TaskQuery.undated(recipient)));
+        return visible;
+    }
+
     private void deliver(Member recipient, List<Task> visible, List<Member> roster, Family family) {
         try {
-            notifier.digest(recipient, visible, roster, family.timezone());
+            notifier.digest(recipient, visible, roster, family.timezone(), family.digestHorizonDays());
         } catch (RuntimeException e) {
             // один недоставленный дайджест не отменяет остальных в семье
             log.warn("digest for member {} not delivered", recipient.id(), e);

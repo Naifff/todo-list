@@ -40,5 +40,10 @@ public interface Notifier {
      *
      * @param family состав семьи — нужен, чтобы подписать, кто кого просил
      */
-    void digest(Member recipient, List<Task> tasks, List<Member> family, ZoneId zone);
+    void digest(
+            Member recipient,
+            List<Task> tasks,
+            List<Member> family,
+            ZoneId zone,
+            int horizonDays);
 }

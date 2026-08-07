@@ -2,6 +2,7 @@ package com.familytodo.adapter.telegram.handler;
 
 import com.familytodo.adapter.telegram.BotRequest;
 import com.familytodo.adapter.telegram.BotSender;
+import com.familytodo.adapter.telegram.BotSettings;
 import com.familytodo.adapter.telegram.CallbackData;
 import com.familytodo.adapter.telegram.CallbackHandler;
 import com.familytodo.adapter.telegram.CommandHandler;
@@ -23,7 +24,6 @@ import java.util.Optional;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 
@@ -39,14 +39,11 @@ public class FamilyHandler implements CommandHandler, CallbackHandler {
     private final String botUsername;
 
     public FamilyHandler(
-            FamilyService families,
-            InviteService invites,
-            BotSender sender,
-            @Value("${telegram.bot.username}") String botUsername) {
+            FamilyService families, InviteService invites, BotSender sender, BotSettings settings) {
         this.families = families;
         this.invites = invites;
         this.sender = sender;
-        this.botUsername = botUsername;
+        this.botUsername = settings.username();
     }
 
     @Override
@@ -83,6 +80,7 @@ public class FamilyHandler implements CommandHandler, CallbackHandler {
             case FamilyView.SETTINGS -> showSettings(request, actor);
             case FamilyView.TIMEZONE -> timezone(request, actor, data.argument());
             case FamilyView.DIGEST -> digest(request, actor, data.argument());
+            case FamilyView.HORIZON -> horizon(request, actor, data.argument());
             default -> log.warn("unknown family action {}", data.action());
         }
     }
@@ -183,6 +181,31 @@ public class FamilyHandler implements CommandHandler, CallbackHandler {
         }
 
         families.changeTimezone(actor, zone.get());
+        showMenu(request, actor);
+    }
+
+    /**
+     * Горизонт приходит из {@code callback_data}, то есть от клиента. Проверку значения держит
+     * домен: набор допустимых горизонтов — правило семьи, а не свойство клавиатуры.
+     */
+    private void horizon(BotRequest request, Member actor, String argument) {
+        if (refuseNonParent(actor, Texts.SETTINGS_ARE_FOR_PARENTS, request)) {
+            return;
+        }
+
+        if ("ask".equals(argument)) {
+            edit(request, "На сколько дней вперёд присылать список?", FamilyView.digestHorizons());
+            return;
+        }
+
+        int days;
+        try {
+            days = Integer.parseInt(argument);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("digest horizon is not a number", e);
+        }
+
+        families.changeDigestHorizon(actor, days);
         showMenu(request, actor);
     }
 

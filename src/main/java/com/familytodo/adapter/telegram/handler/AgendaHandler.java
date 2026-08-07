@@ -5,6 +5,7 @@ import com.familytodo.adapter.telegram.BotSender;
 import com.familytodo.adapter.telegram.CallbackData;
 import com.familytodo.adapter.telegram.CallbackHandler;
 import com.familytodo.adapter.telegram.CommandHandler;
+import com.familytodo.adapter.telegram.render.CalendarRenderer;
 import com.familytodo.adapter.telegram.view.AgendaView;
 import com.familytodo.application.FamilyService;
 import com.familytodo.application.TaskQuery;
@@ -63,7 +64,8 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
 
     @Override
     public void handle(BotRequest request, CallbackData data) {
-        if (!AgendaView.DAYS.equals(data.action())) {
+        boolean picture = AgendaView.PICTURE.equals(data.action());
+        if (!picture && !AgendaView.DAYS.equals(data.action())) {
             return;
         }
         int days = (int) data.longArgument();
@@ -71,7 +73,29 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
         if (!AgendaView.HORIZONS.contains(days)) {
             throw new IllegalArgumentException("unsupported horizon " + days);
         }
+        if (picture) {
+            sendPicture(request, request.requireMember(), days);
+            return;
+        }
         show(request, request.requireMember(), days, true);
+    }
+
+    /**
+     * Картинка приходит новым сообщением, а не заменяет список: у неё нет кнопок, и переписать ею
+     * список означало бы отобрать у человека все действия над делами.
+     */
+    private void sendPicture(BotRequest request, Member viewer, int days) {
+        ZoneId zone = families.family(viewer).timezone();
+        LocalDate today = LocalDate.ofInstant(clock.instant(), zone);
+        Instant from = today.atStartOfDay(zone).toInstant();
+        Instant to = today.plusDays(days).atStartOfDay(zone).toInstant();
+
+        List<Task> dated = tasks.find(TaskQuery.inRange(viewer, from, to));
+        int undated = tasks.find(TaskQuery.undated(viewer)).size();
+
+        byte[] png = CalendarRenderer.render(dated, zone, today, days);
+        sender.sendPhoto(
+                request.chatId(), png, "calendar-" + days + ".png", AgendaView.caption(days, undated));
     }
 
     private void show(BotRequest request, Member viewer, int days, boolean rewrite) {

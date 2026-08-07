@@ -82,7 +82,12 @@ public class TelegramNotifier implements Notifier {
     }
 
     @Override
-    public void digest(Member recipient, List<Task> tasks, List<Member> family, ZoneId zone) {
+    public void digest(
+            Member recipient,
+            List<Task> tasks,
+            List<Member> family,
+            ZoneId zone,
+            int horizonDays) {
         Map<Long, Member> byId =
                 family.stream().collect(Collectors.toMap(Member::id, Function.identity()));
         // тот же список, что и по команде: родителю — вся семья, ребёнку — только своё
@@ -91,13 +96,24 @@ public class TelegramNotifier implements Notifier {
 
         TaskListView.Rendered rendered =
                 TaskListView.render(
-                        "Доброе утро. Дела на сегодня",
+                        greeting(horizonDays),
                         tasks,
                         byId,
                         kind,
                         zone,
                         clock.instant());
         send(recipient, rendered.text());
+    }
+
+    /** Заголовок обязан совпадать с содержимым: «дела на сегодня» над недельным списком — неправда. */
+    private static String greeting(int horizonDays) {
+        return "Доброе утро. "
+                + switch (horizonDays) {
+                    case 1 -> "Дела на сегодня";
+                    case 3 -> "Дела на три дня";
+                    case 7 -> "Дела на неделю";
+                    default -> "Дела на " + horizonDays + " дней";
+                };
     }
 
     private void send(Member recipient, String html) {

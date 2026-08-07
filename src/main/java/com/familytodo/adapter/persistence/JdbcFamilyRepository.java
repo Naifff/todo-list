@@ -26,17 +26,24 @@ public class JdbcFamilyRepository implements FamilyRepository {
     private static final DateTimeFormatter DIGEST_TIME = DateTimeFormatter.ofPattern("HH:mm");
 
     private static final String SELECT =
-            "select id, name, timezone, digest_time, last_digest_date, created_at from family";
+            """
+            select id, name, timezone, digest_time, last_digest_date,
+                   digest_horizon_days, created_at
+            from family
+            """;
 
     private static final String UPSERT =
             """
-            insert into family (id, name, timezone, digest_time, last_digest_date, created_at)
-            values (?, ?, ?, ?, ?, ?)
+            insert into family (
+                id, name, timezone, digest_time, last_digest_date,
+                digest_horizon_days, created_at)
+            values (?, ?, ?, ?, ?, ?, ?)
             on conflict (id) do update set
-                name             = excluded.name,
-                timezone         = excluded.timezone,
-                digest_time      = excluded.digest_time,
-                last_digest_date = excluded.last_digest_date
+                name                = excluded.name,
+                timezone            = excluded.timezone,
+                digest_time         = excluded.digest_time,
+                last_digest_date    = excluded.last_digest_date,
+                digest_horizon_days = excluded.digest_horizon_days
             """;
 
     private final JdbcClient jdbc;
@@ -61,6 +68,7 @@ public class JdbcFamilyRepository implements FamilyRepository {
                         family.timezone().getId(),
                         family.digestTime().format(DIGEST_TIME),
                         family.lastDigestDate().toString(),
+                        family.digestHorizonDays(),
                         Instants.write(family.createdAt()))
                 .update();
         return family;
@@ -88,6 +96,7 @@ public class JdbcFamilyRepository implements FamilyRepository {
                 ZoneId.of(rs.getString("timezone")),
                 LocalTime.parse(rs.getString("digest_time")),
                 LocalDate.parse(rs.getString("last_digest_date")),
+                rs.getInt("digest_horizon_days"),
                 Instants.read(rs, "created_at"));
     }
 }
