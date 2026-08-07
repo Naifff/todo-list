@@ -3,13 +3,17 @@ package com.familytodo.application.fake;
 import com.familytodo.application.TaskQuery;
 import com.familytodo.application.port.TaskRepository;
 import com.familytodo.domain.Task;
+import com.familytodo.domain.TaskStatus;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -21,6 +25,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class InMemoryTaskRepository implements TaskRepository {
 
     private final Map<Long, Task> tasks = new LinkedHashMap<>();
+    private final Map<Occurrence, Long> occurrences = new LinkedHashMap<>();
     private final AtomicLong sequence = new AtomicLong();
 
     @Override
@@ -59,6 +64,59 @@ public final class InMemoryTaskRepository implements TaskRepository {
     public void delete(long familyId, long taskId) {
         findById(familyId, taskId).ifPresent(task -> tasks.remove(task.id()));
     }
+
+    @Override
+    public void saveOccurrence(Task task, long seriesId, LocalDate occurrenceOn) {
+        // тот же запрет на дубль, что даёт уникальный индекс в схеме: фейк, который
+        // прощает больше базы, обесценивает тесты юзкейсов
+        if (occurrences.containsKey(new Occurrence(seriesId, occurrenceOn))) {
+            return;
+        }
+        occurrences.put(new Occurrence(seriesId, occurrenceOn), task.id());
+        tasks.put(task.id(), task);
+    }
+
+    @Override
+    public Set<LocalDate> occurrenceDates(
+            long familyId, long seriesId, LocalDate from, LocalDate to) {
+        Set<LocalDate> dates = new HashSet<>();
+        occurrences.forEach(
+                (key, taskId) -> {
+                    Task task = tasks.get(taskId);
+                    if (task != null
+                            && task.familyId() == familyId
+                            && key.seriesId() == seriesId
+                            && !key.date().isBefore(from)
+                            && !key.date().isAfter(to)) {
+                        dates.add(key.date());
+                    }
+                });
+        return dates;
+    }
+
+    @Override
+    public int deleteOpenOccurrencesFrom(long familyId, long seriesId, LocalDate from) {
+        List<Occurrence> doomed = new ArrayList<>();
+        occurrences.forEach(
+                (key, taskId) -> {
+                    Task task = tasks.get(taskId);
+                    if (task != null
+                            && task.familyId() == familyId
+                            && key.seriesId() == seriesId
+                            && task.status() == TaskStatus.OPEN
+                            && !key.date().isBefore(from)) {
+                        doomed.add(key);
+                    }
+                });
+        doomed.forEach(
+                key -> {
+                    tasks.remove(occurrences.get(key));
+                    occurrences.remove(key);
+                });
+        return doomed.size();
+    }
+
+    private record Occurrence(long seriesId, LocalDate date) {}
 
     private boolean matches(Task task, TaskQuery query) {
         if (task.familyId() != query.familyId()) {

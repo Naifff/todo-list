@@ -23,6 +23,28 @@ public sealed interface DialogState {
     /** {@code /new}: исполнитель выбран, ждём срока кнопкой. */
     record AwaitingDueDate(String title, long assigneeId) implements DialogState {}
 
+    /**
+     * {@code /new}: срок выбран, спрашиваем про повторение.
+     *
+     * <p>Срок несём с собой: время серии — это время выбранного срока, спрашивать его отдельно
+     * значило бы добавить шаг ради того, что человек только что назвал.
+     */
+    record AwaitingRepeat(String title, long assigneeId, java.time.Instant dueAt)
+            implements DialogState {}
+
+    /** {@code /new}: выбрали «Свои дни» — копим отмеченные, пока не нажмут «Готово». */
+    record ChoosingDays(
+            String title,
+            long assigneeId,
+            java.time.Instant dueAt,
+            java.util.Set<java.time.DayOfWeek> days)
+            implements DialogState {
+
+        public ChoosingDays {
+            days = java.util.Set.copyOf(days);
+        }
+    }
+
     /** {@code /new}: выбрали «Своя дата» — ждём её текстом. */
     record AwaitingCustomDueDate(String title, long assigneeId) implements DialogState {}
 
