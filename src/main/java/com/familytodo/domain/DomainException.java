@@ -18,8 +18,8 @@ public abstract sealed class DomainException extends RuntimeException {
     }
 
     /**
-     * Переход невозможен из текущего состояния. Статус — часть ошибки: по нему бот выбирает ответ
-     * («уже отмечено» для {@code DONE}, «задача и так открыта» для {@code OPEN}).
+     * Переход невозможен из текущего состояния. Для задач статус — часть ошибки: по нему бот
+     * выбирает ответ («уже отмечено» для {@code DONE}, «задача и так открыта» для {@code OPEN}).
      */
     public static final class InvalidTransition extends DomainException {
         private final TaskStatus currentStatus;
@@ -29,6 +29,12 @@ public abstract sealed class DomainException extends RuntimeException {
             this.currentStatus = currentStatus;
         }
 
+        /**
+         * @return статус задачи или {@code null} для сущностей без статуса — участников и
+         *     приглашений. У приглашения причина отказа наружу всё равно не выходит: истёкший,
+         *     использованный и несуществующий код дают один и тот же ответ, чтобы незнакомец не
+         *     узнал, какие коды существуют
+         */
         public TaskStatus currentStatus() {
             return currentStatus;
         }
