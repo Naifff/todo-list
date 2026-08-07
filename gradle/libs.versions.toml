@@ -4,8 +4,11 @@ dependencyManagement = "1.1.7"
 # telegrambots тянет Jackson 2 (com.fasterxml) — пинить не нужно: BOM Boot 4.1
 # управляет обоими поколениями, jackson-2-bom 2.21.4 и jackson-bom 3.1.4.
 telegrambots = "10.2.0"
+# BOM Boot версией ArchUnit не управляет
+archunit = "1.5.0"
 
 [libraries]
+archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
 telegrambots-longpolling = { module = "org.telegram:telegrambots-longpolling", version.ref = "telegrambots" }
 telegrambots-client = { module = "org.telegram:telegrambots-client", version.ref = "telegrambots" }
 
