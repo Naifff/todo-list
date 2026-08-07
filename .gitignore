@@ -1,6 +1,7 @@
 build/
 .gradle/
 .env
+data/
 *.log
 .idea/
 .DS_Store

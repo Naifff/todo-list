@@ -26,8 +26,12 @@ dependencies {
     implementation(libs.telegrambots.longpolling)
     implementation(libs.telegrambots.client)
 
-    // persistence появится в задаче 7 — раньше она ломает спайк
-    // ненастроенным DataSource
+    // SQLite: JdbcClient вместо JPA. На типизированной по значению БД без
+    // связей и ленивой загрузки Hibernate давал бы только community-диалект
+    // как лишнюю зависимость от чужого мейнтейнера.
+    implementation("org.springframework.boot:spring-boot-starter-jdbc")
+    implementation("org.flywaydb:flyway-core")
+    runtimeOnly("org.xerial:sqlite-jdbc")
 }
 
 testing {
@@ -39,15 +43,18 @@ testing {
             }
         }
 
-        // отдельный source set: task `test` подхватывает все классы своего
-        // source set, и интеграционные тесты рядом с юнитами поднимали бы
-        // Docker на каждом прогоне
+        // отдельный source set: `test` — чистые юниты, `integrationTest` — всё,
+        // что трогает реальную БД и файловую систему. С SQLite это уже не про
+        // скорость, а про то, чтобы падение миграции нельзя было спутать с
+        // падением доменного правила
         register<JvmTestSuite>("integrationTest") {
             useJUnitJupiter()
             dependencies {
                 implementation(project())
                 implementation("org.springframework.boot:spring-boot-starter-test")
-                implementation("org.testcontainers:postgresql")
+                implementation("org.springframework.boot:spring-boot-starter-jdbc")
+                implementation("org.flywaydb:flyway-core")
+                runtimeOnly("org.xerial:sqlite-jdbc")
             }
             targets.all {
                 testTask.configure { shouldRunAfter(test) }

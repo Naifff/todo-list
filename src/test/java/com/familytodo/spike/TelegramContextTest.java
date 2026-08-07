@@ -17,7 +17,13 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * <p>Бин объявлен здесь, а не в {@code config/}, намеренно — настоящий {@code TelegramConfig}
  * появится в задаче 11. Спайк не должен оставлять после себя продовый код.
  */
-@SpringBootTest(properties = {"telegram.bot.token=spike-token", "telegram.bot.username=spike_bot"})
+@SpringBootTest(
+        properties = {
+            "telegram.bot.token=spike-token",
+            "telegram.bot.username=spike_bot",
+            // база в памяти: юнит-прогон не должен оставлять файлов в репозитории
+            "spring.datasource.url=jdbc:sqlite::memory:?foreign_keys=true"
+        })
 class TelegramContextTest {
 
     @TestConfiguration
