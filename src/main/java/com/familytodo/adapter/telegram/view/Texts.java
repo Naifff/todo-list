@@ -75,5 +75,17 @@ public final class Texts {
 
     public static final String DIALOG_EXPIRED = "Начнём заново: /new";
 
+    // --- списки ---
+
+    public static final String MINE_HEADER = "Что просят у меня";
+    public static final String REQUESTED_HEADER = "Что я попросил";
+    public static final String ALL_HEADER = "Все дела семьи";
+
+    public static final String MINE_EMPTY = "У тебя ничего не просят.";
+    public static final String REQUESTED_EMPTY = "Ты пока ни о чём не просил.";
+    public static final String ALL_EMPTY = "Открытых дел нет.";
+
+    public static final String ALL_IS_FOR_PARENTS = "Весь список семьи видят только родители.";
+
     private Texts() {}
 }
