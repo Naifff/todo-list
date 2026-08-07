@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.Nested;
@@ -26,6 +27,27 @@ class DueDateParserTest {
     private static final Instant NOON_FRIDAY = Instant.parse("2026-08-07T09:00:00Z");
 
     private final DueDateParser parser = new DueDateParser(Clock.fixed(NOON_FRIDAY, ZoneOffset.UTC));
+
+    /** Ночной интервал в правке дела — та же история, что и при создании. */
+    @Nested
+    class NightSlot {
+
+        @Test
+        void endBeforeStartMeansTheNextMorning() {
+            DueDateParser.Slot slot =
+                    parser.parseSlot("22:40-8:00 кровать", MOSCOW, LocalDate.of(2026, 8, 7))
+                            .orElseThrow();
+
+            assertThat(slot.startsAt()).isEqualTo(Instant.parse("2026-08-07T19:40:00Z"));
+            assertThat(slot.endsAt()).isEqualTo(Instant.parse("2026-08-08T05:00:00Z"));
+            assertThat(slot.location()).isEqualTo("кровать");
+        }
+
+        @Test
+        void equalStartAndEndIsRejected() {
+            assertThat(parser.parseSlot("22:40-22:40", MOSCOW, LocalDate.of(2026, 8, 7))).isEmpty();
+        }
+    }
 
     @Nested
     class Shortcuts {
@@ -179,9 +201,24 @@ class DueDateParserTest {
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {"08:70-09:00 школа", "25:00 школа", "09:00-08:00 школа", "08:00-08:00"})
+        @ValueSource(strings = {"08:70-09:00 школа", "25:00 школа", "08:00-08:00"})
         void rejectsImpossibleIntervals(String input) {
             assertThat(parser.parseSlot(input, MOSCOW, DAY)).isEmpty();
+        }
+
+        /**
+         * Размен, принятый сознательно: отличить опечатку от длинного интервала нельзя, и
+         * «09:00-08:00» становится делом до следующего утра.
+         *
+         * <p>Раньше такое отвергалось — и вместе с ним отвергалось «22:40-8:00 кровать», обычное
+         * семейное дело. Из двух зол предсказуемое правило лучше догадки: длинный блок человек
+         * увидит на календаре и поправит, а отказ вводить ночной сон исправить нечем.
+         */
+        @Test
+        void endBeforeStartIsAcceptedAsRunningIntoTheNextDay() {
+            DueDateParser.Slot slot = parser.parseSlot("09:00-08:00 школа", MOSCOW, DAY).orElseThrow();
+
+            assertThat(slot.endsAt()).isEqualTo(slot.startsAt().plus(java.time.Duration.ofHours(23)));
         }
 
         @Test

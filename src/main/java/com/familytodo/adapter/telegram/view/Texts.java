@@ -74,7 +74,14 @@ public final class Texts {
     public static final String ASK_DUE = "К какому сроку?";
 
     public static final String ASK_CUSTOM_DUE =
-            "Напиши срок: <code>15.08</code>, <code>15.08 18:30</code> или <code>18:30</code>";
+            """
+            Напиши когда и где:
+            <code>18:00-19:00 парк</code> — займёт этот час
+            <code>19:00 дом</code> — срок к семи
+            <code>15.08 08:00-08:40 школа</code> — с датой
+            <code>Zoom</code> — только место, без даты
+
+            Текст без времени понимается как место.""";
 
     public static final String DUE_NOT_PARSED =
             "Не понял срок. Попробуй так: <code>15.08</code>, <code>15.08 18:30</code> или <code>18:30</code>";

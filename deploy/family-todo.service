@@ -30,7 +30,10 @@ Environment=SPRING_PROFILES_ACTIVE=prod
 # ExitOnOutOfMemoryError: лучше честный перезапуск, чем служба, ползающая по GC.
 # java.awt.headless: календарь рисуется через Java2D, и без флага JVM ищет
 # оконную подсистему, которой на сервере нет.
-ExecStart=/usr/bin/java -XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError -Djava.awt.headless=true -jar /opt/family-todo/app.jar
+# enable-native-access: sqlite-jdbc грузит нативную библиотеку через System::load.
+# На JDK 25 это предупреждение, в следующих релизах — блокировка. Флаг делает
+# намерение явным и убирает четыре строки WARNING на каждом старте.
+ExecStart=/usr/bin/java -XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError -Djava.awt.headless=true --enable-native-access=ALL-UNNAMED -jar /opt/family-todo/app.jar
 
 Restart=on-failure
 RestartSec=10

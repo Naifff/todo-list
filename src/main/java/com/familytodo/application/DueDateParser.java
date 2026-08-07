@@ -1,5 +1,6 @@
 package com.familytodo.application;
 
+import com.familytodo.domain.Task;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.Instant;
@@ -45,6 +46,12 @@ public class DueDateParser {
     private static final Pattern SLOT =
             Pattern.compile(
                     "^(?:(\\d{1,2}):(\\d{2})(?:\\s*[-–]\\s*(\\d{1,2}):(\\d{2}))?)?\\s*(.*)$");
+
+    private static final Pattern DATE_PREFIX =
+            Pattern.compile("^(\\d{1,2})\\.(\\d{1,2})(?:\\.(\\d{4}))?(?=\\s|$)");
+
+    private static final Pattern TIME_PREFIX =
+            Pattern.compile("^(\\d{1,2}):(\\d{2})(?:\\s*[-–]\\s*(\\d{1,2}):(\\d{2}))?(?=\\s|$)");
 
     private final Clock clock;
 
@@ -186,15 +193,131 @@ public class DueDateParser {
         }
 
         Optional<LocalTime> end = time(matcher.group(3), matcher.group(4));
-        if (end.isEmpty() || !end.get().isAfter(start.get())) {
+        if (end.isEmpty() || end.get().equals(start.get())) {
+            // равные концы — ноль или сутки, понять нельзя; отказ честнее догадки
             return Optional.empty();
         }
         return Optional.of(
-                new Slot(at(day, start.get(), zone), at(day, end.get(), zone), location));
+                new Slot(
+                        at(day, start.get(), zone),
+                        at(endDay(day, start.get(), end.get()), end.get(), zone),
+                        location));
+    }
+
+    /**
+     * День, на который приходится конец интервала.
+     *
+     * <p>Конец раньше начала — это ночь, а не опечатка: «22:40-8:00 кровать» обычное семейное дело,
+     * и отвергать его значит требовать разбить сон на два. Так же считают все календари.
+     */
+    private static LocalDate endDay(LocalDate day, LocalTime start, LocalTime end) {
+        return end.isBefore(start) ? day.plusDays(1) : day;
     }
 
     /** Разобранное «когда и где». Любое поле может быть пустым. */
     public record Slot(Instant startsAt, Instant endsAt, String location) {}
+
+    /**
+     * Разобранное «когда и где» при создании дела: дата, время или интервал, место — одной строкой.
+     *
+     * <p>Срок и занятое время разведены намеренно. Одно время — это <b>срок</b> («к 19:00»),
+     * интервал — <b>занятое время</b> («с 18:00 до 19:00»). Сложить их в одно поле значило бы
+     * соврать напоминаниям: они шлются по сроку, а не по началу дела.
+     */
+    public record Plan(Instant dueAt, Instant startsAt, Instant endsAt, String location) {}
+
+    /**
+     * Разбор строки вида {@code [ДД.ММ[.ГГГГ]] [ЧЧ:ММ[-ЧЧ:ММ]] [место]}. Любая часть необязательна,
+     * но хотя бы одна должна быть.
+     *
+     * <p>Надмножество {@link #parse}: всё, что понималось прежней «Своей датой», понимается и здесь.
+     */
+    public Optional<Plan> parsePlan(String input, ZoneId zone) {
+        if (input == null || input.isBlank()) {
+            return Optional.empty();
+        }
+        String rest = input.trim();
+        LocalDate today = LocalDate.now(clock.withZone(zone));
+
+        // дата
+        LocalDate date = null;
+        Matcher datePrefix = DATE_PREFIX.matcher(rest);
+        if (datePrefix.find()) {
+            Optional<LocalDate> parsed =
+                    date(datePrefix.group(1), datePrefix.group(2), datePrefix.group(3), today);
+            if (parsed.isEmpty()) {
+                return Optional.empty();
+            }
+            date = parsed.get();
+            rest = rest.substring(datePrefix.end()).trim();
+        }
+
+        // время или интервал
+        LocalTime start = null;
+        LocalTime end = null;
+        Matcher timePrefix = TIME_PREFIX.matcher(rest);
+        if (timePrefix.find()) {
+            Optional<LocalTime> parsedStart = time(timePrefix.group(1), timePrefix.group(2));
+            if (parsedStart.isEmpty()) {
+                return Optional.empty();
+            }
+            start = parsedStart.get();
+
+            if (timePrefix.group(3) != null) {
+                Optional<LocalTime> parsedEnd = time(timePrefix.group(3), timePrefix.group(4));
+                if (parsedEnd.isEmpty() || parsedEnd.get().equals(start)) {
+                    return Optional.empty();
+                }
+                end = parsedEnd.get();
+            }
+            rest = rest.substring(timePrefix.end()).trim();
+        }
+
+        String location = rest.isBlank() ? null : rest;
+        if (location != null && location.length() > Task.MAX_LOCATION_LENGTH) {
+            // молча обрезать чужой текст мы не вправе: пусть человек увидит отказ
+            return Optional.empty();
+        }
+        if (date == null && start == null && location == null) {
+            return Optional.empty();
+        }
+
+        if (start == null) {
+            // только дата — срок на время по умолчанию; только место — дело без даты
+            return Optional.of(
+                    new Plan(date == null ? null : at(date, DEFAULT_TIME, zone), null, null, location));
+        }
+
+        // день без даты: прошедшее время значит завтра, иначе дело просрочено сразу
+        LocalDate day = date != null ? date : today;
+        if (date == null && !start.isAfter(LocalTime.now(clock.withZone(zone)))) {
+            day = day.plusDays(1);
+        }
+
+        return end == null
+                ? Optional.of(new Plan(at(day, start, zone), null, null, location))
+                : Optional.of(
+                        new Plan(
+                                null,
+                                at(day, start, zone),
+                                at(endDay(day, start, end), end, zone),
+                                location));
+    }
+
+    private Optional<LocalDate> date(String day, String month, String year, LocalDate today) {
+        LocalDate parsed;
+        try {
+            parsed =
+                    LocalDate.of(
+                            year != null ? Integer.parseInt(year) : today.getYear(),
+                            Integer.parseInt(month),
+                            Integer.parseInt(day));
+        } catch (java.time.DateTimeException e) {
+            return Optional.empty();
+        }
+        // дата без года в прошлом означает следующий год, а не просрочку годичной давности
+        return Optional.of(year == null && parsed.isBefore(today) ? parsed.plusYears(1) : parsed);
+    }
 
     private static Optional<LocalTime> time(String hours, String minutes) {
         try {
