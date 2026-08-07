@@ -103,10 +103,39 @@ class DueDateParserPlanTest {
             assertThat(parse("18:00 - 19:00").endsAt()).isEqualTo(parse("18:00-19:00").endsAt());
         }
 
-        /** Интервал, кончающийся раньше начала, — не расписание, а опечатка. */
+        /**
+         * Конец раньше начала — это ночь, а не опечатка.
+         *
+         * <p>«22:40-8:00 кровать» — обычное дело в семье с детьми, и отвергать его значит требовать
+         * от человека разбить сон на два дела. Так же считают все календари.
+         */
         @Test
-        void endBeforeStartIsRejected() {
-            assertThat(parser.parsePlan("19:00-18:00", MOSCOW)).isEmpty();
+        void endBeforeStartMeansTheNextMorning() {
+            DueDateParser.Plan plan = parse("22:40-8:00 кровать");
+
+            assertThat(plan.startsAt()).isEqualTo(Instant.parse("2026-08-07T19:40:00Z"));
+            assertThat(plan.endsAt()).isEqualTo(Instant.parse("2026-08-08T05:00:00Z"));
+            assertThat(plan.location()).isEqualTo("кровать");
+        }
+
+        @Test
+        void nightIntervalOnAGivenDate() {
+            DueDateParser.Plan plan = parse("15.08 23:00-06:30");
+
+            assertThat(plan.startsAt()).isEqualTo(Instant.parse("2026-08-15T20:00:00Z"));
+            assertThat(plan.endsAt()).isEqualTo(Instant.parse("2026-08-16T03:30:00Z"));
+        }
+
+        /** Час без ведущего нуля — то же самое время. */
+        @Test
+        void singleDigitHourIsAccepted() {
+            assertThat(parse("8:00-9:30").startsAt()).isEqualTo(parse("08:00-09:30").startsAt());
+        }
+
+        /** Равные концы — ноль или сутки, понять нельзя. Отказ честнее догадки. */
+        @Test
+        void equalStartAndEndIsRejected() {
+            assertThat(parser.parsePlan("22:40-22:40", MOSCOW)).isEmpty();
         }
 
         @Test

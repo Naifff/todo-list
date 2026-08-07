@@ -193,11 +193,25 @@ public class DueDateParser {
         }
 
         Optional<LocalTime> end = time(matcher.group(3), matcher.group(4));
-        if (end.isEmpty() || !end.get().isAfter(start.get())) {
+        if (end.isEmpty() || end.get().equals(start.get())) {
+            // равные концы — ноль или сутки, понять нельзя; отказ честнее догадки
             return Optional.empty();
         }
         return Optional.of(
-                new Slot(at(day, start.get(), zone), at(day, end.get(), zone), location));
+                new Slot(
+                        at(day, start.get(), zone),
+                        at(endDay(day, start.get(), end.get()), end.get(), zone),
+                        location));
+    }
+
+    /**
+     * День, на который приходится конец интервала.
+     *
+     * <p>Конец раньше начала — это ночь, а не опечатка: «22:40-8:00 кровать» обычное семейное дело,
+     * и отвергать его значит требовать разбить сон на два. Так же считают все календари.
+     */
+    private static LocalDate endDay(LocalDate day, LocalTime start, LocalTime end) {
+        return end.isBefore(start) ? day.plusDays(1) : day;
     }
 
     /** Разобранное «когда и где». Любое поле может быть пустым. */
@@ -251,7 +265,7 @@ public class DueDateParser {
 
             if (timePrefix.group(3) != null) {
                 Optional<LocalTime> parsedEnd = time(timePrefix.group(3), timePrefix.group(4));
-                if (parsedEnd.isEmpty() || !parsedEnd.get().isAfter(start)) {
+                if (parsedEnd.isEmpty() || parsedEnd.get().equals(start)) {
                     return Optional.empty();
                 }
                 end = parsedEnd.get();
@@ -282,7 +296,12 @@ public class DueDateParser {
 
         return end == null
                 ? Optional.of(new Plan(at(day, start, zone), null, null, location))
-                : Optional.of(new Plan(null, at(day, start, zone), at(day, end, zone), location));
+                : Optional.of(
+                        new Plan(
+                                null,
+                                at(day, start, zone),
+                                at(endDay(day, start, end), end, zone),
+                                location));
     }
 
     private Optional<LocalDate> date(String day, String month, String year, LocalDate today) {
