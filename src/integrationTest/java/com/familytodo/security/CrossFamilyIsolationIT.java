@@ -9,7 +9,7 @@ import com.familytodo.adapter.persistence.JdbcMemberRepository;
 import com.familytodo.adapter.persistence.JdbcTaskRepository;
 import com.familytodo.application.TaskQuery;
 import com.familytodo.application.TaskService;
-import com.familytodo.application.port.Notifier;
+import com.familytodo.support.NoOpNotifier;
 import com.familytodo.domain.DomainException;
 import com.familytodo.domain.Family;
 import com.familytodo.domain.Member;
@@ -60,7 +60,7 @@ class CrossFamilyIsolationIT extends AbstractSqliteIT {
                 new TaskService(
                         taskRepository,
                         memberRepository,
-                        new RecordingNotifier(),
+                        new NoOpNotifier(),
                         Clock.fixed(NOW, ZoneOffset.UTC));
 
         Family familyA =
@@ -170,26 +170,4 @@ class CrossFamilyIsolationIT extends AbstractSqliteIT {
                         NOW));
     }
 
-    private static final class RecordingNotifier implements Notifier {
-        @Override
-        public void taskAssigned(Member recipient, Task task) {}
-
-        @Override
-        public void taskCompleted(Member recipient, Task task, Member by) {}
-
-        @Override
-        public void taskDeclined(Member recipient, Task task, Member by, String reason) {}
-
-        @Override
-        public void taskReopened(Member recipient, Task task, Member by) {}
-
-        @Override
-        public void taskCancelled(Member recipient, Task task, String reason) {}
-
-        @Override
-        public void taskUnassigned(Member recipient, Task task) {}
-
-        @Override
-        public void taskDue(Member recipient, Task task) {}
-    }
 }

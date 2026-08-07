@@ -10,7 +10,7 @@ import com.familytodo.adapter.persistence.JdbcReminderRepository;
 import com.familytodo.adapter.persistence.JdbcTaskRepository;
 import com.familytodo.adapter.scheduler.ReminderJob;
 import com.familytodo.application.DueDateParser;
-import com.familytodo.application.port.Notifier;
+import com.familytodo.support.NoOpNotifier;
 import com.familytodo.domain.Assignee;
 import com.familytodo.domain.Family;
 import com.familytodo.domain.Member;
@@ -274,7 +274,7 @@ class ReminderJobIT extends AbstractSqliteIT {
                 .orElse(null);
     }
 
-    private static final class RecordingNotifier implements Notifier {
+    private static final class RecordingNotifier extends NoOpNotifier {
         private final List<Long> sent = new ArrayList<>();
         private boolean explode;
 
@@ -285,24 +285,6 @@ class ReminderJobIT extends AbstractSqliteIT {
             }
             sent.add(task.id());
         }
-
-        @Override
-        public void taskAssigned(Member recipient, Task task) {}
-
-        @Override
-        public void taskCompleted(Member recipient, Task task, Member by) {}
-
-        @Override
-        public void taskDeclined(Member recipient, Task task, Member by, String reason) {}
-
-        @Override
-        public void taskReopened(Member recipient, Task task, Member by) {}
-
-        @Override
-        public void taskCancelled(Member recipient, Task task, String reason) {}
-
-        @Override
-        public void taskUnassigned(Member recipient, Task task) {}
     }
 
     private static final class MutableClock extends Clock {

@@ -18,7 +18,8 @@ public final class FakeNotifier implements Notifier {
         REOPENED,
         CANCELLED,
         UNASSIGNED,
-        DUE
+        DUE,
+        DIGEST
     }
 
     private final List<Sent> sent = new ArrayList<>();
@@ -56,6 +57,15 @@ public final class FakeNotifier implements Notifier {
     @Override
     public void taskDue(Member recipient, Task task) {
         sent.add(new Sent(Kind.DUE, recipient.id(), task.id(), null));
+    }
+
+    @Override
+    public void digest(
+            Member recipient,
+            List<Task> tasks,
+            List<Member> family,
+            java.time.ZoneId zone) {
+        sent.add(new Sent(Kind.DIGEST, recipient.id(), tasks.size(), null));
     }
 
     public List<Sent> sent() {

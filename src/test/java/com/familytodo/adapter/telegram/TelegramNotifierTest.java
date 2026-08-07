@@ -41,7 +41,7 @@ class TelegramNotifierTest {
 
     @BeforeEach
     void setUp() {
-        notifier = new TelegramNotifier(sender, members);
+        notifier = new TelegramNotifier(sender, members, Clock.fixed(NOW, ZoneOffset.UTC));
         tasks = new TaskService(repository, members, notifier, Clock.fixed(NOW, ZoneOffset.UTC));
 
         mom = members.save(Member.join(10L, FAMILY, 100L, 1100L, "Мама", Role.PARENT, NOW));

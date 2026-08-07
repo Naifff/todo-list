@@ -1,10 +1,17 @@
 package com.familytodo.adapter.telegram;
 
 import com.familytodo.adapter.telegram.view.HtmlEscaper;
+import com.familytodo.adapter.telegram.view.TaskListView;
 import com.familytodo.application.port.MemberRepository;
 import com.familytodo.application.port.Notifier;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
+import java.time.Clock;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -29,10 +36,12 @@ public class TelegramNotifier implements Notifier {
 
     private final BotSender sender;
     private final MemberRepository members;
+    private final Clock clock;
 
-    public TelegramNotifier(BotSender sender, MemberRepository members) {
+    public TelegramNotifier(BotSender sender, MemberRepository members, Clock clock) {
         this.sender = sender;
         this.members = members;
+        this.clock = clock;
     }
 
     @Override
@@ -70,6 +79,25 @@ public class TelegramNotifier implements Notifier {
     @Override
     public void taskDue(Member recipient, Task task) {
         send(recipient, "Срок подошёл: " + title(task));
+    }
+
+    @Override
+    public void digest(Member recipient, List<Task> tasks, List<Member> family, ZoneId zone) {
+        Map<Long, Member> byId =
+                family.stream().collect(Collectors.toMap(Member::id, Function.identity()));
+        // тот же список, что и по команде: родителю — вся семья, ребёнку — только своё
+        TaskListView.Kind kind =
+                recipient.isParent() ? TaskListView.Kind.ALL : TaskListView.Kind.MINE;
+
+        TaskListView.Rendered rendered =
+                TaskListView.render(
+                        "Доброе утро. Дела на сегодня",
+                        tasks,
+                        byId,
+                        kind,
+                        zone,
+                        clock.instant());
+        send(recipient, rendered.text());
     }
 
     private void send(Member recipient, String html) {
