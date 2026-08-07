@@ -30,7 +30,9 @@ dependencies {
     // связей и ленивой загрузки Hibernate давал бы только community-диалект
     // как лишнюю зависимость от чужого мейнтейнера.
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
-    implementation("org.flywaydb:flyway-core")
+    // именно стартер, а не голый flyway-core: Boot 4 разнёс автоконфигурацию по
+    // модулям, и без spring-boot-flyway миграции просто не запускаются — молча
+    implementation("org.springframework.boot:spring-boot-starter-flyway")
     runtimeOnly("org.xerial:sqlite-jdbc")
 }
 
@@ -54,7 +56,7 @@ testing {
                 implementation(project())
                 implementation("org.springframework.boot:spring-boot-starter-test")
                 implementation("org.springframework.boot:spring-boot-starter-jdbc")
-                implementation("org.flywaydb:flyway-core")
+                implementation("org.springframework.boot:spring-boot-starter-flyway")
                 runtimeOnly("org.xerial:sqlite-jdbc")
             }
             targets.all {
