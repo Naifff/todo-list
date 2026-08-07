@@ -4,7 +4,11 @@ import com.familytodo.application.TaskQuery;
 import com.familytodo.application.port.TaskRepository;
 import com.familytodo.domain.Task;
 import com.familytodo.domain.TaskStatus;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -50,6 +54,20 @@ public class JdbcTaskRepository implements TaskRepository {
                 location       = excluded.location
             """;
 
+    /**
+     * Вставка вхождения серии. {@code do nothing} по паре (серия, дата) — вторая линия обороны:
+     * джоба и так спрашивает, каких дат не хватает, но между запросом и вставкой мог пройти другой
+     * прогон. Уникальный индекс делает дубль невозможным, а не маловероятным.
+     */
+    private static final String INSERT_OCCURRENCE =
+            """
+            insert into task (id, family_id, title, creator_id, assignee_id,
+                              status, due_at, decline_reason, created_at, closed_at,
+                              starts_at, ends_at, location, series_id, occurrence_on)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            on conflict (series_id, occurrence_on) where series_id is not null do nothing
+            """;
+
     private final JdbcClient jdbc;
     private final JdbcIdSequence sequence;
 
@@ -82,6 +100,57 @@ public class JdbcTaskRepository implements TaskRepository {
                         task.location())
                 .update();
         return task;
+    }
+
+    @Override
+    public void saveOccurrence(Task task, long seriesId, LocalDate occurrenceOn) {
+        jdbc.sql(INSERT_OCCURRENCE)
+                .params(
+                        task.id(),
+                        task.familyId(),
+                        task.title(),
+                        task.creatorId(),
+                        task.assignee().memberId(),
+                        task.status().name(),
+                        Instants.write(task.dueAt()),
+                        task.declineReason(),
+                        Instants.write(task.createdAt()),
+                        Instants.write(task.closedAt()),
+                        Instants.write(task.startsAt()),
+                        Instants.write(task.endsAt()),
+                        task.location(),
+                        seriesId,
+                        occurrenceOn.toString())
+                .update();
+    }
+
+    @Override
+    public Set<LocalDate> occurrenceDates(
+            long familyId, long seriesId, LocalDate from, LocalDate to) {
+        return jdbc.sql(
+                        """
+                        select occurrence_on from task
+                        where family_id = ? and series_id = ?
+                          and occurrence_on >= ? and occurrence_on <= ?
+                        """)
+                .params(familyId, seriesId, from.toString(), to.toString())
+                .query(String.class)
+                .list()
+                .stream()
+                .map(LocalDate::parse)
+                .collect(Collectors.toCollection(HashSet::new));
+    }
+
+    @Override
+    public int deleteOpenOccurrencesFrom(long familyId, long seriesId, LocalDate from) {
+        return jdbc.sql(
+                        """
+                        delete from task
+                        where family_id = ? and series_id = ?
+                          and status = 'OPEN' and occurrence_on >= ?
+                        """)
+                .params(familyId, seriesId, from.toString())
+                .update();
     }
 
     @Override

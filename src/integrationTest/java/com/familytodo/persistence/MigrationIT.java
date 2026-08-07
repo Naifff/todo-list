@@ -31,7 +31,9 @@ class MigrationIT extends AbstractSqliteIT {
                         "idx_task_family_status",
                         "idx_task_assignee_status",
                         "idx_task_due",
-                        "idx_task_family_starts");
+                        "idx_task_family_starts",
+                        "idx_task_occurrence",
+                        "idx_series_active");
     }
 
     /** Частичный индекс — иначе он растёт вместе с архивом закрытых задач, а нужен только по открытым. */
@@ -59,7 +61,7 @@ class MigrationIT extends AbstractSqliteIT {
         List<String> names =
                 jdbc.sql("select name from id_sequence order by name").query(String.class).list();
 
-        assertThat(names).containsExactly("family", "invite", "member", "task");
+        assertThat(names).containsExactly("family", "invite", "member", "task", "task_series");
     }
 
     /**

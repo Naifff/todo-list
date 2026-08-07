@@ -21,12 +21,14 @@ import com.familytodo.application.DueDateParser;
 import com.familytodo.application.FamilyService;
 import com.familytodo.application.TaskQuery;
 import com.familytodo.application.InviteService;
+import com.familytodo.application.SeriesService;
 import com.familytodo.application.TaskService;
 import com.familytodo.application.fake.FakeNotifier;
 import com.familytodo.application.fake.InMemoryFamilyRepository;
 import com.familytodo.application.fake.InMemoryInviteRepository;
 import com.familytodo.application.fake.InMemoryMemberRepository;
 import com.familytodo.application.fake.InMemoryTaskRepository;
+import com.familytodo.application.fake.InMemoryTaskSeriesRepository;
 import com.familytodo.domain.InviteCodeGenerator;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Role;
@@ -74,6 +76,7 @@ class LogHygieneTest {
     private final InMemoryMemberRepository members = new InMemoryMemberRepository();
     private final InMemoryTaskRepository tasks = new InMemoryTaskRepository();
     private final InMemoryInviteRepository invites = new InMemoryInviteRepository();
+    private final InMemoryTaskSeriesRepository seriesRepository = new InMemoryTaskSeriesRepository();
     private final FakeNotifier notifier = new FakeNotifier();
     private final DialogStateStore dialogs = new DialogStateStore();
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
@@ -98,7 +101,12 @@ class LogHygieneTest {
         taskService = new TaskService(tasks, members, notifier, clock);
         newTask =
                 new NewTaskHandler(
-                        taskService, familyService, dialogs, new DueDateParser(clock), sender);
+                        taskService,
+                        familyService,
+                        new SeriesService(families, seriesRepository, tasks, members, clock),
+                        dialogs,
+                        new DueDateParser(clock),
+                        sender);
         actions =
                 new TaskActionHandler(
                         taskService,
@@ -233,7 +241,15 @@ class LogHygieneTest {
         newTask.handle(command(mom));
         newTask.continueDialog(text(mom, TITLE));
         newTask.handle(callback(mom), new CallbackData(NewTaskKeyboards.PREFIX, NewTaskKeyboards.ASSIGNEE, String.valueOf(kid.id())));
-        newTask.handle(callback(mom), new CallbackData(NewTaskKeyboards.PREFIX, NewTaskKeyboards.DUE, NewTaskKeyboards.TODAY));
+        newTask.handle(
+                callback(mom),
+                new CallbackData(
+                        NewTaskKeyboards.PREFIX, NewTaskKeyboards.DUE, NewTaskKeyboards.TODAY));
+        // с задачи 30 у диалога появился шаг «Повторять?»
+        newTask.handle(
+                callback(mom),
+                new CallbackData(
+                        NewTaskKeyboards.PREFIX, NewTaskKeyboards.REPEAT, NewTaskKeyboards.ONCE));
         return tasks.find(TaskQuery.visibleTo(mom)).getFirst();
     }
 

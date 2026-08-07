@@ -66,6 +66,11 @@ public final class Texts {
 
     public static final String ASK_ASSIGNEE = "Кого попросить?";
 
+    public static final String ASK_REPEAT = "Повторять?";
+
+    public static final String PICK_AT_LEAST_ONE_DAY =
+            "Отметьте хотя бы один день — иначе повторять нечего.";
+
     public static final String ASK_DUE = "К какому сроку?";
 
     public static final String ASK_CUSTOM_DUE =

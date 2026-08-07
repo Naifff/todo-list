@@ -18,7 +18,12 @@ import com.familytodo.application.fake.FakeNotifier;
 import com.familytodo.application.fake.FakeNotifier.Kind;
 import com.familytodo.application.fake.InMemoryFamilyRepository;
 import com.familytodo.application.fake.InMemoryMemberRepository;
+import com.familytodo.application.SeriesService;
 import com.familytodo.application.fake.InMemoryTaskRepository;
+import com.familytodo.application.fake.InMemoryTaskSeriesRepository;
+import com.familytodo.domain.Recurrence;
+import java.time.DayOfWeek;
+import java.util.Set;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Role;
 import com.familytodo.domain.Task;
@@ -48,6 +53,9 @@ class NewTaskHandlerTest {
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
     private final RecordingSender sender = new RecordingSender();
 
+    private final InMemoryTaskSeriesRepository series = new InMemoryTaskSeriesRepository();
+
+    private SeriesService seriesService;
     private TaskService taskService;
     private NewTaskHandler handler;
     private Member mom;
@@ -58,10 +66,12 @@ class NewTaskHandlerTest {
         FamilyService familyService =
                 new FamilyService(families, members, tasks, notifier, clock);
         taskService = new TaskService(tasks, members, notifier, clock);
+        seriesService = new SeriesService(families, series, tasks, members, clock);
         handler =
                 new NewTaskHandler(
                         taskService,
                         familyService,
+                        seriesService,
                         dialogs,
                         new DueDateParser(clock),
                         sender);
@@ -127,6 +137,7 @@ class NewTaskHandlerTest {
             notifier.clear();
 
             handler.handle(callback(mom), due(NewTaskKeyboards.TOMORROW));
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.ONCE));
 
             Task created = tasks.find(TaskQuery.visibleTo(mom)).getFirst();
             assertThat(created.title()).isEqualTo("Вынести мусор");
@@ -156,6 +167,7 @@ class NewTaskHandlerTest {
             handler.handle(callback(kid), assignee(mom.id()));
 
             handler.handle(callback(kid), due(NewTaskKeyboards.TODAY));
+            handler.handle(callback(kid), repeat(NewTaskKeyboards.ONCE));
 
             Task created = tasks.find(TaskQuery.visibleTo(mom)).getFirst();
             assertThat(created.creatorId()).isEqualTo(kid.id());
@@ -170,6 +182,7 @@ class NewTaskHandlerTest {
             notifier.clear();
 
             handler.handle(callback(mom), due(NewTaskKeyboards.TODAY));
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.ONCE));
 
             assertThat(notifier.sent()).isEmpty();
             assertThat(tasks.find(TaskQuery.visibleTo(mom)).getFirst().isSelfAssigned()).isTrue();
@@ -187,6 +200,7 @@ class NewTaskHandlerTest {
             sender.clear();
 
             handler.continueDialog(text(mom, "15.08 18:30"));
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.ONCE));
 
             assertThat(tasks.find(TaskQuery.visibleTo(mom)).getFirst().dueAt())
                     .isEqualTo(Instant.parse("2026-08-15T15:30:00Z"));
@@ -273,7 +287,179 @@ class NewTaskHandlerTest {
         }
     }
 
+
+    /**
+     * Повторяющиеся дела.
+     *
+     * <p>Правило v1 — набор дней недели. Время берётся из выбранного срока: спрашивать его ещё раз
+     * значило бы добавить шаг ради того, что человек только что назвал.
+     */
+    @Nested
+    class Repeating {
+
+        @Test
+        void afterDueDateBotAsksAboutRepeating() {
+            uptoDue();
+
+            handler.handle(callback(mom), due(NewTaskKeyboards.TOMORROW));
+
+            assertThat(sender.texts).containsExactly(Texts.ASK_REPEAT);
+            assertThat(dialogs.get(mom.telegramUserId()))
+                    .containsInstanceOf(DialogState.AwaitingRepeat.class);
+        }
+
+        /** «Без срока» повторять нечего: у серии обязано быть время. */
+        @Test
+        void undatedTaskIsCreatedWithoutAskingAboutRepeating() {
+            uptoDue();
+
+            handler.handle(callback(mom), due(NewTaskKeyboards.NONE));
+
+            assertThat(dialogs.get(mom.telegramUserId())).isEmpty();
+            assertThat(tasks.find(TaskQuery.visibleTo(mom))).hasSize(1);
+            assertThat(series.findActive(mom.familyId())).isEmpty();
+        }
+
+        @Test
+        void onceCreatesAPlainTaskAndNoSeries() {
+            uptoRepeat();
+
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.ONCE));
+
+            assertThat(tasks.find(TaskQuery.visibleTo(mom))).hasSize(1);
+            assertThat(series.findActive(mom.familyId())).isEmpty();
+        }
+
+        @Test
+        void dailyCreatesASeriesAndFillsTheHorizon() {
+            uptoRepeat();
+
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.DAILY));
+
+            assertThat(series.findActive(mom.familyId())).hasSize(1);
+            assertThat(series.findActive(mom.familyId()).getFirst().recurrence())
+                    .isEqualTo(Recurrence.daily());
+            assertThat(tasks.find(TaskQuery.visibleTo(mom)))
+                    .describedAs(
+                            "горизонт заполняется сразу, а не через час; серия начинается завтра,"
+                                    + " поэтому на день меньше горизонта")
+                    .hasSize(SeriesService.HORIZON_DAYS - 1);
+        }
+
+        @Test
+        void weekdaysCreatesAWeekdaySeries() {
+            uptoRepeat();
+
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.WEEKDAYS));
+
+            assertThat(series.findActive(mom.familyId()).getFirst().recurrence())
+                    .isEqualTo(Recurrence.weekdays());
+        }
+
+        /** Время серии — время выбранного срока, а не что-то своё. */
+        @Test
+        void seriesKeepsTheTimeOfTheChosenDueDate() {
+            uptoRepeat();
+
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.DAILY));
+
+            assertThat(series.findActive(mom.familyId()).getFirst().startTime())
+                    .isEqualTo(DueDateParser.DEFAULT_TIME);
+        }
+
+        @Test
+        void customDaysOpenAPickerThatStartsEmpty() {
+            uptoRepeat();
+
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.PICK_DAYS));
+
+            assertThat(dialogs.get(mom.telegramUserId()))
+                    .containsInstanceOf(DialogState.ChoosingDays.class);
+            assertThat(series.findActive(mom.familyId())).isEmpty();
+        }
+
+        @Test
+        void togglingADayKeepsThePickerOpen() {
+            uptoPicker();
+
+            handler.handle(callback(mom), day(DayOfWeek.TUESDAY));
+
+            assertThat(dialogs.get(mom.telegramUserId()))
+                    .contains(
+                            new DialogState.ChoosingDays(
+                                    "Вынести мусор", kid.id(), tomorrow(), Set.of(DayOfWeek.TUESDAY)));
+            assertThat(series.findActive(mom.familyId())).isEmpty();
+        }
+
+        @Test
+        void togglingTheSameDayTwiceRemovesIt() {
+            uptoPicker();
+            handler.handle(callback(mom), day(DayOfWeek.TUESDAY));
+
+            handler.handle(callback(mom), day(DayOfWeek.TUESDAY));
+
+            assertThat(dialogs.get(mom.telegramUserId()))
+                    .contains(
+                            new DialogState.ChoosingDays(
+                                    "Вынести мусор", kid.id(), tomorrow(), Set.of()));
+        }
+
+        @Test
+        void chosenDaysBecomeTheSeriesRule() {
+            uptoPicker();
+            handler.handle(callback(mom), day(DayOfWeek.TUESDAY));
+            handler.handle(callback(mom), day(DayOfWeek.THURSDAY));
+
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.DAYS_DONE));
+
+            assertThat(series.findActive(mom.familyId()).getFirst().recurrence())
+                    .isEqualTo(Recurrence.on(Set.of(DayOfWeek.TUESDAY, DayOfWeek.THURSDAY)));
+        }
+
+        /** Ни одного дня — не правило, а тихо мёртвая серия. Подтвердить такое нельзя. */
+        @Test
+        void confirmingWithoutAnyDayIsRefused() {
+            uptoPicker();
+
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.DAYS_DONE));
+
+            assertThat(series.findActive(mom.familyId())).isEmpty();
+            assertThat(sender.texts).contains(Texts.PICK_AT_LEAST_ONE_DAY);
+        }
+
+        @Test
+        void expiredDialogDoesNotCreateASeries() {
+            uptoRepeat();
+            dialogs.clear(mom.telegramUserId());
+
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.DAILY));
+
+            assertThat(series.findActive(mom.familyId())).isEmpty();
+            assertThat(sender.texts).contains(Texts.DIALOG_EXPIRED);
+        }
+
+        private void uptoDue() {
+            handler.handle(command(mom));
+            handler.continueDialog(text(mom, "Вынести мусор"));
+            handler.handle(callback(mom), assignee(kid.id()));
+            sender.clear();
+        }
+
+        private void uptoRepeat() {
+            uptoDue();
+            handler.handle(callback(mom), due(NewTaskKeyboards.TOMORROW));
+            sender.clear();
+        }
+
+        private void uptoPicker() {
+            uptoRepeat();
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.PICK_DAYS));
+            sender.clear();
+        }
+    }
+
     // --- вспомогательное ---
+
 
     private void startAndName(Member member, String title) {
         handler.handle(command(member));
@@ -282,6 +468,19 @@ class NewTaskHandlerTest {
 
     private static CallbackData assignee(long memberId) {
         return CallbackData.of(NewTaskKeyboards.PREFIX, NewTaskKeyboards.ASSIGNEE, memberId);
+    }
+
+    private java.time.Instant tomorrow() {
+        return new DueDateParser(clock).tomorrow(MOSCOW);
+    }
+
+    private static CallbackData repeat(String choice) {
+        return new CallbackData(NewTaskKeyboards.PREFIX, NewTaskKeyboards.REPEAT, choice);
+    }
+
+    private static CallbackData day(DayOfWeek day) {
+        return new CallbackData(
+                NewTaskKeyboards.PREFIX, NewTaskKeyboards.DAY, Integer.toString(day.getValue()));
     }
 
     private static CallbackData due(String choice) {
