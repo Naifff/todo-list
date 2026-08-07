@@ -93,6 +93,31 @@ public final class Texts {
 
     public static final String DECLINE_REASON_TOO_LONG = "Покороче, пожалуйста — до 200 символов.";
 
+    // --- семья ---
+
+    public static final String FAMILY_HEADER = "Семья";
+
+    public static final String INVITE_IS_FOR_PARENTS = "Приглашать могут только родители.";
+
+    public static final String REMOVE_IS_FOR_PARENTS = "Исключать могут только родители.";
+
+    public static final String SETTINGS_ARE_FOR_PARENTS = "Настройки меняют только родители.";
+
+    /** Отказ должен объяснять, а не просто запрещать: иначе выглядит как поломка. */
+    public static final String LAST_PARENT_STAYS =
+            "Это единственный родитель. Без него некому будет приглашать и управлять семьёй — "
+                    + "сначала сделай родителем кого-то ещё.";
+
+    public static final String NOBODY_TO_REMOVE = "Кроме тебя в семье никого нет.";
+
+    public static final String ASK_WHO_TO_REMOVE = "Кого исключить?";
+
+    public static final String REMOVED_NOTICE = "Исключён";
+
+    public static final String TIMEZONE_SAVED = "Часовой пояс сохранён";
+
+    public static final String DIGEST_SAVED = "Время дайджеста сохранено";
+
     public static final String DONE_NOTICE = "Отмечено";
     public static final String DECLINED_NOTICE = "Отказ записан";
     public static final String REOPENED_NOTICE = "Вернули в работу";

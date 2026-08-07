@@ -39,12 +39,18 @@ public final class TimezoneKeyboard {
 
     private TimezoneKeyboard() {}
 
+    /** Онбординг. */
     public static InlineKeyboardMarkup markup() {
+        return markup(PREFIX);
+    }
+
+    /** Тот же выбор в другом сценарии — смена пояса из {@code /family}. */
+    public static InlineKeyboardMarkup markup(String prefix) {
         List<InlineKeyboardRow> rows = new ArrayList<>();
         for (int i = 0; i < ZONES.size(); i += 2) {
-            InlineKeyboardRow row = new InlineKeyboardRow(button(i));
+            InlineKeyboardRow row = new InlineKeyboardRow(button(prefix, i));
             if (i + 1 < ZONES.size()) {
-                row.add(button(i + 1));
+                row.add(button(prefix, i + 1));
             }
             rows.add(row);
         }
@@ -64,10 +70,10 @@ public final class TimezoneKeyboard {
         }
     }
 
-    private static InlineKeyboardButton button(int index) {
+    private static InlineKeyboardButton button(String prefix, int index) {
         return InlineKeyboardButton.builder()
                 .text(ZONES.get(index).label())
-                .callbackData(CallbackData.of(PREFIX, ACTION, index).serialize())
+                .callbackData(CallbackData.of(prefix, ACTION, index).serialize())
                 .build();
     }
 
