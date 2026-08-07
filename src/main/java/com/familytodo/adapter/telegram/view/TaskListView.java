@@ -133,7 +133,10 @@ public final class TaskListView {
             line.append(" — ").append(who);
         }
 
-        line.append(" · ").append(due(task, zone, now));
+        line.append(" · ").append(when(task, zone, now));
+        if (task.location() != null) {
+            line.append(" · ").append(HtmlEscaper.escape(task.location()));
+        }
         return line.toString();
     }
 
@@ -149,6 +152,32 @@ public final class TaskListView {
     private static String name(Map<Long, Member> byId, long memberId) {
         Member member = byId.get(memberId);
         return HtmlEscaper.escape(member == null ? "кто-то" : member.displayName());
+    }
+
+    /**
+     * У дела с интервалом показываем интервал, у остальных — срок. Смешивать нельзя: «08:00–08:40»
+     * и «к 19:00» это разные обещания.
+     */
+    private static String when(Task task, ZoneId zone, Instant now) {
+        if (!task.isScheduled()) {
+            return due(task, zone, now);
+        }
+        ZonedDateTime start = task.startsAt().atZone(zone);
+        String prefix = dayPrefix(start.toLocalDate(), LocalDate.ofInstant(now, zone));
+        if (task.endsAt() == null) {
+            return prefix + start.format(TIME);
+        }
+        return prefix + start.format(TIME) + "–" + task.endsAt().atZone(zone).format(TIME);
+    }
+
+    private static String dayPrefix(LocalDate date, LocalDate today) {
+        if (date.equals(today)) {
+            return "";
+        }
+        if (date.equals(today.plusDays(1))) {
+            return "завтра ";
+        }
+        return date.format(DATE) + " ";
     }
 
     /** Срок показываем относительно сегодняшнего дня семьи: «сегодня» читается быстрее даты. */

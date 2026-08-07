@@ -26,6 +26,7 @@ public final class TaskCardView {
     public static final String BACK = "back";
 
     private static final DateTimeFormatter FULL = DateTimeFormatter.ofPattern("dd.MM HH:mm");
+    private static final DateTimeFormatter TIME_ONLY = DateTimeFormatter.ofPattern("HH:mm");
 
     private TaskCardView() {}
 
@@ -39,6 +40,12 @@ public final class TaskCardView {
         out.append("Просит: ").append(name(byId, task.creatorId())).append('\n');
         out.append("Делает: ").append(name(byId, task.assignee().memberId())).append('\n');
         out.append("Срок: ").append(due(task, zone)).append('\n');
+        if (task.isScheduled()) {
+            out.append("Когда: ").append(slot(task, zone)).append('\n');
+        }
+        if (task.location() != null) {
+            out.append("Где: ").append(HtmlEscaper.escape(task.location())).append('\n');
+        }
 
         if (task.status() == TaskStatus.DECLINED && task.declineReason() != null) {
             out.append("\nПричина отказа: ")
@@ -115,6 +122,15 @@ public final class TaskCardView {
         }
         ZonedDateTime local = task.dueAt().atZone(zone);
         return local.format(FULL);
+    }
+
+    /** Интервал показываем целиком; открытый конец — просто время начала. */
+    private static String slot(Task task, ZoneId zone) {
+        String start = task.startsAt().atZone(zone).format(FULL);
+        if (task.endsAt() == null) {
+            return start;
+        }
+        return start + " – " + task.endsAt().atZone(zone).format(TIME_ONLY);
     }
 
     private static String name(Map<Long, Member> byId, long memberId) {

@@ -133,6 +133,64 @@ class DueDateParserTest {
     }
 
     @Nested
+    class Slots {
+
+        private static final java.time.LocalDate DAY = java.time.LocalDate.of(2026, 9, 1);
+
+        @Test
+        void parsesIntervalWithLocation() {
+            DueDateParser.Slot slot =
+                    parser.parseSlot("08:00-08:40 школа", MOSCOW, DAY).orElseThrow();
+
+            assertThat(slot.startsAt()).isEqualTo(Instant.parse("2026-09-01T05:00:00Z"));
+            assertThat(slot.endsAt()).isEqualTo(Instant.parse("2026-09-01T05:40:00Z"));
+            assertThat(slot.location()).isEqualTo("школа");
+        }
+
+        @Test
+        void parsesOpenEndedTime() {
+            DueDateParser.Slot slot = parser.parseSlot("19:00 дом", MOSCOW, DAY).orElseThrow();
+
+            assertThat(slot.startsAt()).isEqualTo(Instant.parse("2026-09-01T16:00:00Z"));
+            assertThat(slot.endsAt()).isNull();
+            assertThat(slot.location()).isEqualTo("дом");
+        }
+
+        /** Место без времени — обычный случай: «Zoom» без расписания. */
+        @Test
+        void parsesLocationOnly() {
+            DueDateParser.Slot slot = parser.parseSlot("Zoom", MOSCOW, DAY).orElseThrow();
+
+            assertThat(slot.startsAt()).isNull();
+            assertThat(slot.location()).isEqualTo("Zoom");
+        }
+
+        @Test
+        void parsesTimeOnly() {
+            DueDateParser.Slot slot = parser.parseSlot("08:00-08:40", MOSCOW, DAY).orElseThrow();
+
+            assertThat(slot.location()).isNull();
+            assertThat(slot.endsAt()).isEqualTo(Instant.parse("2026-09-01T05:40:00Z"));
+        }
+
+        @Test
+        void acceptsEnDashAsSeparator() {
+            assertThat(parser.parseSlot("08:00 – 08:40 школа", MOSCOW, DAY)).isPresent();
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"08:70-09:00 школа", "25:00 школа", "09:00-08:00 школа", "08:00-08:00"})
+        void rejectsImpossibleIntervals(String input) {
+            assertThat(parser.parseSlot(input, MOSCOW, DAY)).isEmpty();
+        }
+
+        @Test
+        void rejectsEmptyInput() {
+            assertThat(parser.parseSlot("   ", MOSCOW, DAY)).isEmpty();
+        }
+    }
+
+    @Nested
     class DaylightSaving {
 
         /**

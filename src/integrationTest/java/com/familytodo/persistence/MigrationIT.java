@@ -28,7 +28,10 @@ class MigrationIT extends AbstractSqliteIT {
 
         assertThat(indexes)
                 .containsExactlyInAnyOrder(
-                        "idx_task_family_status", "idx_task_assignee_status", "idx_task_due");
+                        "idx_task_family_status",
+                        "idx_task_assignee_status",
+                        "idx_task_due",
+                        "idx_task_family_starts");
     }
 
     /** Частичный индекс — иначе он растёт вместе с архивом закрытых задач, а нужен только по открытым. */
@@ -40,6 +43,15 @@ class MigrationIT extends AbstractSqliteIT {
                         .single();
 
         assertThat(sql).contains("where status = 'OPEN'").contains("due_at is not null");
+    }
+
+    /** V2 добавила интервал и место — все три необязательные. */
+    @Test
+    void taskCarriesScheduleColumns() {
+        List<String> columns =
+                jdbc.sql("select name from pragma_table_info('task')").query(String.class).list();
+
+        assertThat(columns).contains("starts_at", "ends_at", "location");
     }
 
     @Test

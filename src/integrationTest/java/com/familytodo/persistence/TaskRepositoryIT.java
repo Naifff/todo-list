@@ -183,6 +183,40 @@ class TaskRepositoryIT extends AbstractSqliteIT {
                 .containsExactly("Раньше", "Позже", "Без срока");
     }
 
+    /** Интервал и место должны переживать запись и чтение — их добавила V2. */
+    @Test
+    void roundTripsScheduleAndLocation() {
+        Task task = repository.save(open(100L, FAMILY_A, MOM, KID, Role.CHILD));
+        task.schedule(
+                com.familytodo.domain.Actor.member(MOM, FAMILY_A, Role.PARENT),
+                Instant.parse("2026-09-01T05:00:00Z"),
+                Instant.parse("2026-09-01T05:40:00Z"),
+                "школа");
+        repository.save(task);
+
+        Task loaded = repository.findById(FAMILY_A, 100L).orElseThrow();
+
+        assertThat(loaded.startsAt()).isEqualTo(Instant.parse("2026-09-01T05:00:00Z"));
+        assertThat(loaded.endsAt()).isEqualTo(Instant.parse("2026-09-01T05:40:00Z"));
+        assertThat(loaded.location()).isEqualTo("школа");
+        assertThat(loaded.isScheduled()).isTrue();
+    }
+
+    @Test
+    void clearedScheduleIsStoredAsNull() {
+        Task task = repository.save(open(100L, FAMILY_A, MOM, KID, Role.CHILD));
+        var actor = com.familytodo.domain.Actor.member(MOM, FAMILY_A, Role.PARENT);
+        task.schedule(actor, Instant.parse("2026-09-01T05:00:00Z"), null, "школа");
+        repository.save(task);
+
+        task.schedule(actor, null, null, null);
+        repository.save(task);
+
+        Task loaded = repository.findById(FAMILY_A, 100L).orElseThrow();
+        assertThat(loaded.startsAt()).isNull();
+        assertThat(loaded.location()).isNull();
+    }
+
     @Test
     void doesNotHandOutTheSameIdTwice() {
         assertThat(repository.nextId()).isNotEqualTo(repository.nextId());

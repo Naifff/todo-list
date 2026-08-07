@@ -116,6 +116,14 @@ public class TaskService {
         return saved;
     }
 
+    /** Время и место. Уведомлений не шлём: это уточнение уже принятой просьбы, а не новая. */
+    public Task schedule(
+            Member actor, long taskId, Instant startsAt, Instant endsAt, String location) {
+        Task task = load(actor, taskId);
+        task.schedule(actor.asActor(), startsAt, endsAt, location);
+        return tasks.save(task);
+    }
+
     public void delete(Member actor, long taskId) {
         Task task = load(actor, taskId);
         task.assertDeletableBy(actor.asActor());

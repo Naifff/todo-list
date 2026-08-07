@@ -20,6 +20,7 @@ import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +84,7 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
             case TaskEditView.WHO -> askAssignee(request, actor, TaskRef.parse(data.argument()));
             case TaskEditView.SET_DUE -> setDue(request, actor, data.argument());
             case TaskEditView.SET_WHO -> setAssignee(request, actor, data.longArgument());
+            case TaskEditView.SLOT -> askSlot(request, actor, TaskRef.parse(data.argument()));
             case TaskEditView.DELETE -> confirmDeletion(request, actor, TaskRef.parse(data.argument()));
             case TaskEditView.DELETE_OK -> delete(request, actor, TaskRef.parse(data.argument()));
             default -> log.warn("unknown edit action {}", data.action());
@@ -95,6 +97,7 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
         return switch (state) {
             case DialogState.AwaitingNewTitle awaiting -> acceptTitle(request, awaiting);
             case DialogState.AwaitingNewCustomDue awaiting -> acceptCustomDue(request, awaiting);
+            case DialogState.AwaitingSlot awaiting -> acceptSlot(request, awaiting);
             case null, default -> false;
         };
     }
@@ -127,6 +130,43 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
                 request,
                 Texts.ASK_ASSIGNEE,
                 TaskEditView.assignees(families.roster(actor)));
+    }
+
+    private void askSlot(BotRequest request, Member actor, TaskRef ref) {
+        editable(actor, ref);
+        dialogs.put(
+                request.telegramUserId(),
+                new DialogState.AwaitingSlot(ref.taskId(), ref.kind()));
+        sender.send(request.chatId(), Texts.ASK_SLOT);
+    }
+
+    private boolean acceptSlot(BotRequest request, DialogState.AwaitingSlot awaiting) {
+        Member actor = request.requireMember();
+        Task task = tasks.findVisible(actor, awaiting.taskId());
+        ZoneId zone = families.family(actor).timezone();
+
+        String input = request.text().trim();
+        if ("-".equals(input)) {
+            tasks.schedule(actor, task.id(), null, null, null);
+            finish(request, actor, tasks.findVisible(actor, task.id()), awaiting.kind());
+            return true;
+        }
+
+        // день берём у срока: интервал без дня повис бы в воздухе, а спрашивать
+        // дату отдельным шагом ради «отвезти детей» слишком дорого
+        LocalDate day =
+                LocalDate.ofInstant(task.dueAt() != null ? task.dueAt() : clock.instant(), zone);
+        Optional<DueDateParser.Slot> slot = dueDates.parseSlot(input, zone, day);
+
+        if (slot.isEmpty()) {
+            sender.send(request.chatId(), Texts.SLOT_NOT_PARSED);
+            return true;
+        }
+
+        DueDateParser.Slot value = slot.get();
+        tasks.schedule(actor, task.id(), value.startsAt(), value.endsAt(), value.location());
+        finish(request, actor, tasks.findVisible(actor, task.id()), awaiting.kind());
+        return true;
     }
 
     private boolean acceptTitle(BotRequest request, DialogState.AwaitingNewTitle awaiting) {

@@ -41,6 +41,11 @@ public class DueDateParser {
                     "^(\\d{1,2})\\.(\\d{1,2})(?:\\.(\\d{4}))?(?:\\s+(\\d{1,2}):(\\d{2}))?$");
     private static final Pattern TIME_ONLY = Pattern.compile("^(\\d{1,2}):(\\d{2})$");
 
+    /** «08:00-08:40 школа», «19:00 дом», «Zoom» — время необязательно, место тоже. */
+    private static final Pattern SLOT =
+            Pattern.compile(
+                    "^(?:(\\d{1,2}):(\\d{2})(?:\\s*[-–]\\s*(\\d{1,2}):(\\d{2}))?)?\\s*(.*)$");
+
     private final Clock clock;
 
     public DueDateParser(Clock clock) {
@@ -149,6 +154,47 @@ public class DueDateParser {
         }
         return Optional.of(at(date, time, zone));
     }
+
+    /**
+     * Разбор строки «08:00-08:40 школа», «19:00 дом» или просто «Zoom».
+     *
+     * <p>День берётся снаружи — обычно это день срока задачи. Интервал без дня повис бы в воздухе,
+     * а спрашивать дату отдельным шагом ради «отвезти детей» слишком дорого.
+     */
+    public Optional<Slot> parseSlot(String input, ZoneId zone, LocalDate day) {
+        if (input == null || input.isBlank()) {
+            return Optional.empty();
+        }
+        Matcher matcher = SLOT.matcher(input.trim());
+        if (!matcher.matches()) {
+            return Optional.empty();
+        }
+
+        String rest = matcher.group(5);
+        String location = rest == null || rest.isBlank() ? null : rest.trim();
+
+        if (matcher.group(1) == null) {
+            return Optional.of(new Slot(null, null, location));
+        }
+
+        Optional<LocalTime> start = time(matcher.group(1), matcher.group(2));
+        if (start.isEmpty()) {
+            return Optional.empty();
+        }
+        if (matcher.group(3) == null) {
+            return Optional.of(new Slot(at(day, start.get(), zone), null, location));
+        }
+
+        Optional<LocalTime> end = time(matcher.group(3), matcher.group(4));
+        if (end.isEmpty() || !end.get().isAfter(start.get())) {
+            return Optional.empty();
+        }
+        return Optional.of(
+                new Slot(at(day, start.get(), zone), at(day, end.get(), zone), location));
+    }
+
+    /** Разобранное «когда и где». Любое поле может быть пустым. */
+    public record Slot(Instant startsAt, Instant endsAt, String location) {}
 
     private static Optional<LocalTime> time(String hours, String minutes) {
         try {

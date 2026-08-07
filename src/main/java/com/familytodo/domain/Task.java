@@ -15,6 +15,9 @@ public final class Task {
     /** Совпадает с ограничением схемы: длиннее в колонку всё равно не влезет. */
     public static final int MAX_TITLE_LENGTH = 200;
 
+    /** Место это ориентир, а не адрес доставки: «школа», «Zoom», «перег. «Ока»». */
+    public static final int MAX_LOCATION_LENGTH = 100;
+
     private final long id;
     private final long familyId;
     private final long creatorId;
@@ -27,6 +30,13 @@ public final class Task {
     private String declineReason;
     private Instant closedAt;
 
+    /** Занятое время — необязательное. Срок и интервал это разные вещи, см. V2__task_schedule.sql. */
+    private Instant startsAt;
+
+    private Instant endsAt;
+
+    private String location;
+
     private Task(
             long id,
             long familyId,
@@ -37,7 +47,10 @@ public final class Task {
             Instant dueAt,
             String declineReason,
             Instant createdAt,
-            Instant closedAt) {
+            Instant closedAt,
+            Instant startsAt,
+            Instant endsAt,
+            String location) {
         this.id = id;
         this.familyId = familyId;
         this.title = requireValidTitle(title);
@@ -48,6 +61,9 @@ public final class Task {
         this.declineReason = declineReason;
         this.createdAt = createdAt;
         this.closedAt = closedAt;
+        this.startsAt = startsAt;
+        this.endsAt = endsAt;
+        this.location = location;
     }
 
     public static Task create(
@@ -68,6 +84,9 @@ public final class Task {
                 dueAt,
                 null,
                 createdAt,
+                null,
+                null,
+                null,
                 null);
     }
 
@@ -82,7 +101,10 @@ public final class Task {
             Instant dueAt,
             String declineReason,
             Instant createdAt,
-            Instant closedAt) {
+            Instant closedAt,
+            Instant startsAt,
+            Instant endsAt,
+            String location) {
         return new Task(
                 id,
                 familyId,
@@ -93,7 +115,10 @@ public final class Task {
                 dueAt,
                 declineReason,
                 createdAt,
-                closedAt);
+                closedAt,
+                startsAt,
+                endsAt,
+                location);
     }
 
     // --- переходы ---
@@ -153,6 +178,28 @@ public final class Task {
         Assignee previous = assignee;
         assignee = requireAssignee(newAssignee);
         return previous;
+    }
+
+    /**
+     * Назначить время и место. Право то же, что на правку: расписание задаёт тот, кто просил.
+     *
+     * <p>Конец без начала бессмыслен, поэтому запрещён. Начало без конца — нет: «в 8 утра» без
+     * длительности встречается чаще, чем точный интервал.
+     */
+    public void schedule(Actor actor, Instant startsAt, Instant endsAt, String location) {
+        requireEditor(actor);
+        requireOpen();
+
+        if (startsAt == null && endsAt != null) {
+            throw new IllegalArgumentException("end without start");
+        }
+        if (startsAt != null && endsAt != null && !endsAt.isAfter(startsAt)) {
+            throw new IllegalArgumentException("end must be after start");
+        }
+
+        this.startsAt = startsAt;
+        this.endsAt = endsAt;
+        this.location = requireValidLocation(location);
     }
 
     /** Удаление стирает строку, поэтому домен только проверяет право — состояние не важно. */
@@ -294,6 +341,16 @@ public final class Task {
         return title;
     }
 
+    private static String requireValidLocation(String location) {
+        if (isBlank(location)) {
+            return null;
+        }
+        if (location.length() > MAX_LOCATION_LENGTH) {
+            throw new IllegalArgumentException("location is longer than " + MAX_LOCATION_LENGTH);
+        }
+        return location;
+    }
+
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
@@ -338,6 +395,22 @@ public final class Task {
 
     public Instant closedAt() {
         return closedAt;
+    }
+
+    public Instant startsAt() {
+        return startsAt;
+    }
+
+    public Instant endsAt() {
+        return endsAt;
+    }
+
+    public String location() {
+        return location;
+    }
+
+    public boolean isScheduled() {
+        return startsAt != null;
     }
 
     public boolean isSelfAssigned() {

@@ -73,6 +73,14 @@ public final class Texts {
     public static final String DUE_NOT_PARSED =
             "Не понял срок. Попробуй так: <code>15.08</code>, <code>15.08 18:30</code> или <code>18:30</code>";
 
+    public static final String ASK_SLOT =
+            "Напиши когда и где: <code>08:00-08:40 школа</code>, <code>19:00 дом</code>, "
+                    + "просто <code>Zoom</code> — или <code>-</code>, чтобы убрать.";
+
+    public static final String SLOT_NOT_PARSED =
+            "Не понял. Формат: <code>08:00-08:40 школа</code>, <code>19:00 дом</code> "
+                    + "или просто место.";
+
     public static final String DIALOG_EXPIRED = "Начнём заново: /new";
 
     // --- списки ---

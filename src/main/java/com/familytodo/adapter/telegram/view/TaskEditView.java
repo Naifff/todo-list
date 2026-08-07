@@ -20,6 +20,7 @@ public final class TaskEditView {
     public static final String SET_DUE = "setdue";
     public static final String WHO = "who";
     public static final String SET_WHO = "setwho";
+    public static final String SLOT = "slot";
     public static final String DELETE = "del";
     public static final String DELETE_OK = "delok";
 
@@ -33,6 +34,7 @@ public final class TaskEditView {
                                 button("Название", TITLE, argument),
                                 button("Срок", DUE, argument),
                                 button("Исполнителя", WHO, argument)))
+                .keyboardRow(new InlineKeyboardRow(button("Время и место", SLOT, argument)))
                 .keyboardRow(
                         new InlineKeyboardRow(
                                 cardButton("← К задаче", argument)))

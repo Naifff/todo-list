@@ -47,6 +47,10 @@ public sealed interface DialogState {
     record EditingTask(long taskId, com.familytodo.adapter.telegram.view.TaskListView.Kind kind)
             implements DialogState {}
 
+    /** Правка: ждём «когда и где» текстом. */
+    record AwaitingSlot(long taskId, com.familytodo.adapter.telegram.view.TaskListView.Kind kind)
+            implements DialogState {}
+
     /** Правка: выбрали «Своя дата» — ждём её текстом. */
     record AwaitingNewCustomDue(
             long taskId, com.familytodo.adapter.telegram.view.TaskListView.Kind kind)
