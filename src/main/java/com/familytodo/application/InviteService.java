@@ -10,6 +10,7 @@ import com.familytodo.domain.Role;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
+import org.springframework.transaction.annotation.Transactional;
 
 /** Выпуск и погашение приглашений. */
 public class InviteService {
@@ -53,7 +54,14 @@ public class InviteService {
      * ссылается на {@code member(id)}. Обратный порядок нарушает внешний ключ — и нарушал, пока это
      * не всплыло на первой настоящей ссылке. Юнит-тесты на фейках такого не видят, гарантию держит
      * {@code InviteRedemptionIT} на реальной базе.
+     *
+     * <p>Обе записи идут одной транзакцией: сбой между ними оставил бы человека в семье с живой
+     * одноразовой ссылкой. Транзакция короткая и без сети — отправка в Telegram происходит уже
+     * после возврата, в хендлере. Что аннотация действительно работает, проверяет
+     * {@code InviteTransactionIT} на настоящем контексте: без прокси Spring она была бы пустой
+     * декорацией, которая ничего не откатывает и молчит об этом.
      */
+    @Transactional
     public Member redeem(String code, long telegramUserId, long chatId, String displayName) {
         Optional<Member> existing = members.findByTelegramUserId(telegramUserId);
         Invite invite =
