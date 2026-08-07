@@ -1,0 +1,42 @@
+{
+  "update_id": 704253902,
+  "callback_query": {
+    "id": "4382908134712345678",
+    "from": {
+      "id": 512034877,
+      "is_bot": false,
+      "first_name": "Аня",
+      "username": "anya",
+      "language_code": "ru"
+    },
+    "message": {
+      "message_id": 4822,
+      "from": {
+        "id": 8123456789,
+        "is_bot": true,
+        "first_name": "Family Todo",
+        "username": "family_todo_bot"
+      },
+      "chat": {
+        "id": 512034877,
+        "first_name": "Аня",
+        "username": "anya",
+        "type": "private"
+      },
+      "date": 1786060830,
+      "text": "Купить хлеб",
+      "reply_markup": {
+        "inline_keyboard": [
+          [
+            {
+              "text": "Готово",
+              "callback_data": "t:done:1234"
+            }
+          ]
+        ]
+      }
+    },
+    "chat_instance": "-8374619283746192837",
+    "data": "t:done:1234"
+  }
+}

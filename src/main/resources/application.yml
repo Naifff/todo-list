@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: family-todo
+  main:
+    # приложение не слушает ни одного порта: long polling — только исходящие
+    # соединения. Это же структурная гарантия для теста в задаче 22.
+    web-application-type: none
+
+telegram:
+  bot:
+    token: ${BOT_TOKEN}
+    username: ${BOT_USERNAME}
+
+logging:
+  level:
+    root: INFO
+    com.familytodo: INFO

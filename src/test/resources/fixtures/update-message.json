@@ -1,0 +1,28 @@
+{
+  "update_id": 704253901,
+  "message": {
+    "message_id": 4821,
+    "from": {
+      "id": 512034877,
+      "is_bot": false,
+      "first_name": "Аня",
+      "username": "anya",
+      "language_code": "ru"
+    },
+    "chat": {
+      "id": 512034877,
+      "first_name": "Аня",
+      "username": "anya",
+      "type": "private"
+    },
+    "date": 1786060800,
+    "text": "/new Купить хлеб",
+    "entities": [
+      {
+        "offset": 0,
+        "length": 4,
+        "type": "bot_command"
+      }
+    ]
+  }
+}
