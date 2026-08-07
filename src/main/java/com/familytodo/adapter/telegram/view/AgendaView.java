@@ -29,6 +29,9 @@ public final class AgendaView {
     public static final String PREFIX = "a";
     public static final String DAYS = "days";
 
+    /** Календарь картинкой. Обзорный режим: кнопок на самой картинке нет и быть не может. */
+    public static final String PICTURE = "pic";
+
     /** Горизонты из макетов. */
     public static final List<Integer> HORIZONS = List.of(1, 3, 7, 30);
 
@@ -102,6 +105,15 @@ public final class AgendaView {
                             .build());
         }
         rows.add(horizons);
+
+        InlineKeyboardRow picture = new InlineKeyboardRow();
+        picture.add(
+                InlineKeyboardButton.builder()
+                        .text("Картинкой")
+                        .callbackData(
+                                new CallbackData(PREFIX, PICTURE, Integer.toString(days)).serialize())
+                        .build());
+        rows.add(picture);
 
         InlineKeyboardRow row = new InlineKeyboardRow();
         for (int i = 0; i < shown.size(); i++) {
@@ -191,6 +203,24 @@ public final class AgendaView {
     private static String name(Map<Long, Member> byId, long memberId) {
         Member member = byId.get(memberId);
         return HtmlEscaper.escape(member == null ? "кто-то" : member.displayName());
+    }
+
+    /**
+     * Подпись к картинке. Дел без даты на календаре нет — им негде быть на оси времени, — и
+     * умолчать об этом нельзя: человек решит, что у него их не осталось.
+     */
+    public static String caption(int days, int undated) {
+        String caption = "<b>" + header(days) + "</b>";
+        return undated == 0 ? caption : caption + "\n" + undated + " " + undatedWord(undated) + " без даты — в списке";
+    }
+
+    private static String undatedWord(int count) {
+        int last = count % 10;
+        boolean teen = count % 100 >= 11 && count % 100 <= 14;
+        if (!teen && last == 1) {
+            return "дело";
+        }
+        return !teen && last >= 2 && last <= 4 ? "дела" : "дел";
     }
 
     private static String header(int days) {

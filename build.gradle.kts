@@ -40,6 +40,9 @@ testing {
     suites {
         val test = getByName<JvmTestSuite>("test") {
             useJUnitJupiter()
+            // без headless отрисовка календаря на macOS дёргает оконную подсистему,
+            // а на сервере сборки её нет вовсе
+            targets.all { testTask.configure { systemProperty("java.awt.headless", "true") } }
             dependencies {
                 implementation("org.springframework.boot:spring-boot-starter-test")
                 implementation(libs.archunit.junit5)
@@ -63,7 +66,10 @@ testing {
                 runtimeOnly("org.xerial:sqlite-jdbc")
             }
             targets.all {
-                testTask.configure { shouldRunAfter(test) }
+                testTask.configure {
+                    shouldRunAfter(test)
+                    systemProperty("java.awt.headless", "true")
+                }
             }
         }
     }

@@ -28,7 +28,9 @@ Environment=SPRING_PROFILES_ACTIVE=prod
 # и первый же всплеск дал бы OOM-kill вместо GC.
 # 70% из плана заменены на 60 сознательно — арифметика выше.
 # ExitOnOutOfMemoryError: лучше честный перезапуск, чем служба, ползающая по GC.
-ExecStart=/usr/bin/java -XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError -jar /opt/family-todo/app.jar
+# java.awt.headless: календарь рисуется через Java2D, и без флага JVM ищет
+# оконную подсистему, которой на сервере нет.
+ExecStart=/usr/bin/java -XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError -Djava.awt.headless=true -jar /opt/family-todo/app.jar
 
 Restart=on-failure
 RestartSec=10
