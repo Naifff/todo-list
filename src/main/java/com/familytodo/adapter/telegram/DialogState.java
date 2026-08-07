@@ -13,4 +13,16 @@ public sealed interface DialogState {
 
     /** Онбординг: название есть, ждём выбора таймзоны кнопкой. */
     record AwaitingTimezone(String familyName) implements DialogState {}
+
+    /** {@code /new}: спросили, что нужно сделать. */
+    record AwaitingTaskTitle() implements DialogState {}
+
+    /** {@code /new}: текст есть, ждём выбора исполнителя кнопкой. */
+    record AwaitingAssignee(String title) implements DialogState {}
+
+    /** {@code /new}: исполнитель выбран, ждём срока кнопкой. */
+    record AwaitingDueDate(String title, long assigneeId) implements DialogState {}
+
+    /** {@code /new}: выбрали «Своя дата» — ждём её текстом. */
+    record AwaitingCustomDueDate(String title, long assigneeId) implements DialogState {}
 }

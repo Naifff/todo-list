@@ -56,5 +56,24 @@ public final class Texts {
             /family — состав семьи и приглашения
             /help — эта справка""";
 
+    // --- создание задачи ---
+
+    public static final String ASK_TASK_TITLE = "Что нужно сделать?";
+
+    public static final String TASK_TITLE_TOO_LONG =
+            "Слишком длинно. До 200 символов — это просьба, а не инструкция.";
+
+    public static final String ASK_ASSIGNEE = "Кого попросить?";
+
+    public static final String ASK_DUE = "К какому сроку?";
+
+    public static final String ASK_CUSTOM_DUE =
+            "Напиши срок: <code>15.08</code>, <code>15.08 18:30</code> или <code>18:30</code>";
+
+    public static final String DUE_NOT_PARSED =
+            "Не понял срок. Попробуй так: <code>15.08</code>, <code>15.08 18:30</code> или <code>18:30</code>";
+
+    public static final String DIALOG_EXPIRED = "Начнём заново: /new";
+
     private Texts() {}
 }
