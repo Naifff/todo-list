@@ -21,6 +21,7 @@ import com.familytodo.domain.Recurrence;
 import com.familytodo.domain.Task;
 import com.familytodo.domain.TaskSeries;
 import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -168,20 +169,30 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
                     default -> null; // «Без срока» и всё, чего мы не знаем
                 };
 
-        askRepeat(request, awaiting.title(), awaiting.assigneeId(), dueAt);
+        askRepeat(
+                request,
+                awaiting.title(),
+                awaiting.assigneeId(),
+                new DueDateParser.Plan(dueAt, null, null, null));
     }
 
+    /**
+     * Шаг «Время и место»: дата, время или интервал и место — одной строкой.
+     *
+     * <p>Заменил прежнюю «Свою дату» и понимает всё, что понимала она. Отдельные шаги для времени и
+     * длительности стоили бы двух лишних нажатий на каждом деле, включая те, где интервала нет.
+     */
     private boolean acceptCustomDue(BotRequest request, DialogState.AwaitingCustomDueDate awaiting) {
         ZoneId zone = families.family(request.requireMember()).timezone();
-        Optional<Instant> dueAt = dueDates.parse(request.text(), zone);
+        Optional<DueDateParser.Plan> plan = dueDates.parsePlan(request.text(), zone);
 
-        if (dueAt.isEmpty()) {
+        if (plan.isEmpty()) {
             // состояние не сбрасываем: человек ошибся в формате, а не передумал
-            sender.send(request.chatId(), Texts.DUE_NOT_PARSED);
+            sender.send(request.chatId(), Texts.SLOT_NOT_PARSED);
             return true;
         }
 
-        askRepeat(request, awaiting.title(), awaiting.assigneeId(), dueAt.get());
+        askRepeat(request, awaiting.title(), awaiting.assigneeId(), plan.get());
         return true;
     }
 
@@ -189,14 +200,21 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
      * У серии обязано быть время, поэтому «Без срока» повторять нечего — такое дело создаётся
      * сразу, без лишнего шага.
      */
-    private void askRepeat(BotRequest request, String title, long assigneeId, Instant dueAt) {
-        if (dueAt == null) {
-            create(request, title, assigneeId, null);
+    private void askRepeat(
+            BotRequest request, String title, long assigneeId, DueDateParser.Plan plan) {
+        if (moment(plan) == null) {
+            // ни срока, ни интервала — повторять нечего
+            create(request, title, assigneeId, plan);
             return;
         }
         dialogs.put(
-                request.telegramUserId(), new DialogState.AwaitingRepeat(title, assigneeId, dueAt));
+                request.telegramUserId(), new DialogState.AwaitingRepeat(title, assigneeId, plan));
         sender.send(request.chatId(), Texts.ASK_REPEAT, NewTaskKeyboards.repeatOptions());
+    }
+
+    /** Момент дела: начало интервала, а если его нет — срок. Он же становится временем серии. */
+    private static Instant moment(DueDateParser.Plan plan) {
+        return plan.startsAt() != null ? plan.startsAt() : plan.dueAt();
     }
 
     private void chooseRepeat(BotRequest request, CallbackData data) {
@@ -213,7 +231,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
 
         switch (data.argument()) {
             case NewTaskKeyboards.ONCE ->
-                    create(request, awaiting.title(), awaiting.assigneeId(), awaiting.dueAt());
+                    create(request, awaiting.title(), awaiting.assigneeId(), awaiting.plan());
             case NewTaskKeyboards.DAILY -> createSeries(request, awaiting, Recurrence.daily());
             case NewTaskKeyboards.WEEKDAYS -> createSeries(request, awaiting, Recurrence.weekdays());
             case NewTaskKeyboards.PICK_DAYS -> openPicker(request, awaiting);
@@ -225,7 +243,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         dialogs.put(
                 request.telegramUserId(),
                 new DialogState.ChoosingDays(
-                        awaiting.title(), awaiting.assigneeId(), awaiting.dueAt(), Set.of()));
+                        awaiting.title(), awaiting.assigneeId(), awaiting.plan(), Set.of()));
         sender.send(request.chatId(), Texts.ASK_REPEAT, NewTaskKeyboards.dayPicker(Set.of()));
     }
 
@@ -246,7 +264,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         dialogs.put(
                 request.telegramUserId(),
                 new DialogState.ChoosingDays(
-                        choosing.title(), choosing.assigneeId(), choosing.dueAt(), days));
+                        choosing.title(), choosing.assigneeId(), choosing.plan(), days));
         sender.send(request.chatId(), Texts.ASK_REPEAT, NewTaskKeyboards.dayPicker(days));
     }
 
@@ -267,7 +285,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         createSeries(
                 request,
                 new DialogState.AwaitingRepeat(
-                        choosing.title(), choosing.assigneeId(), choosing.dueAt()),
+                        choosing.title(), choosing.assigneeId(), choosing.plan()),
                 Recurrence.on(choosing.days()));
     }
 
@@ -279,7 +297,15 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
             BotRequest request, DialogState.AwaitingRepeat awaiting, Recurrence recurrence) {
         Member creator = request.requireMember();
         ZoneId zone = families.family(creator).timezone();
-        ZonedDateTime start = awaiting.dueAt().atZone(zone);
+        DueDateParser.Plan plan = awaiting.plan();
+        ZonedDateTime start = moment(plan).atZone(zone);
+
+        // длительность и место переносятся в серию: иначе повторяющееся «отвезти детей
+        // 08:00-08:40 школа» теряло бы всё, кроме времени начала
+        Duration duration =
+                plan.startsAt() != null && plan.endsAt() != null
+                        ? Duration.between(plan.startsAt(), plan.endsAt())
+                        : null;
 
         TaskSeries created =
                 seriesService.create(
@@ -288,8 +314,8 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
                         awaiting.title(),
                         recurrence,
                         start.toLocalTime(),
-                        null,
-                        null,
+                        duration,
+                        plan.location(),
                         start.toLocalDate());
         dialogs.clear(request.telegramUserId());
 
@@ -301,14 +327,21 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
                         + SeriesView.describe(created));
     }
 
-    private void create(BotRequest request, String title, long assigneeId, Instant dueAt) {
-        Task task = tasks.create(request.requireMember(), assigneeId, title, dueAt);
+    private void create(
+            BotRequest request, String title, long assigneeId, DueDateParser.Plan plan) {
+        Member creator = request.requireMember();
+        Task task = tasks.create(creator, assigneeId, title, plan.dueAt());
+
+        if (plan.startsAt() != null || plan.location() != null) {
+            // интервал и место живут в самой задаче, а не в сроке
+            task = tasks.schedule(creator, task.id(), plan.startsAt(), plan.endsAt(), plan.location());
+        }
+
         dialogs.clear(request.telegramUserId());
         log.info("task {} created in family {}", task.id(), task.familyId());
 
         sender.send(
-                request.chatId(),
-                "Записал: <b>" + HtmlEscaper.escape(task.title()) + "</b>");
+                request.chatId(), "Записал: <b>" + HtmlEscaper.escape(task.title()) + "</b>");
     }
 
     private void expired(BotRequest request) {

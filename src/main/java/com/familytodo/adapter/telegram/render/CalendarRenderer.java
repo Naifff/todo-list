@@ -73,11 +73,13 @@ public final class CalendarRenderer {
 
         int fromHour = DEFAULT_FROM_HOUR;
         int toHour = DEFAULT_TO_HOUR;
+        // границы считаются теми же величинами, которыми потом рисуются блоки. Разные
+        // правила для оси и для блока дали отказ в проде: у дела через полночь `to.getHour()`
+        // равен 8, ось не растягивалась, и ночное дело пропадало с картинки целиком
         for (List<Entry> day : byDay.values()) {
             for (Entry e : day) {
-                fromHour = Math.min(fromHour, e.from().getHour());
-                // конец в 23:30 требует часа 24, конец ровно в 23:00 — нет
-                toHour = Math.max(toHour, e.to().getHour() + (e.to().getMinute() > 0 ? 1 : 0));
+                fromHour = Math.min(fromHour, e.startSecond() / 3600);
+                toHour = Math.max(toHour, Math.ceilDiv(e.endSecond(), 3600));
             }
         }
         toHour = Math.min(24, Math.max(toHour, fromHour + 1));
@@ -324,13 +326,29 @@ public final class CalendarRenderer {
             if (startsAt == null) {
                 continue;
             }
-            LocalDateTime start = LocalDateTime.ofInstant(startsAt, zone);
-            List<Entry> bucket = byDay.get(start.toLocalDate());
-            if (bucket == null) {
-                continue;
-            }
             Instant endsAt = task.endsAt() != null ? task.endsAt() : startsAt.plusSeconds(1800);
-            bucket.add(new Entry(task.title(), task.location(), start, LocalDateTime.ofInstant(endsAt, zone)));
+            LocalDateTime start = LocalDateTime.ofInstant(startsAt, zone);
+            LocalDateTime end = LocalDateTime.ofInstant(endsAt, zone);
+
+            // дело через полночь попадает в колонку каждого дня, который занимает, обрезанное
+            // по границам суток. Иначе сон обрывается на полуночи и наутро его нет
+            for (LocalDate day = start.toLocalDate();
+                    !day.isAfter(end.toLocalDate());
+                    day = day.plusDays(1)) {
+                List<Entry> bucket = byDay.get(day);
+                if (bucket == null) {
+                    continue;
+                }
+                LocalDateTime dayStart = day.atStartOfDay();
+                LocalDateTime dayEnd = day.plusDays(1).atStartOfDay();
+                LocalDateTime from = start.isAfter(dayStart) ? start : dayStart;
+                LocalDateTime to = end.isBefore(dayEnd) ? end : dayEnd;
+                if (!to.isAfter(from)) {
+                    // дело кончается ровно в полночь: следующему дню оно не принадлежит
+                    continue;
+                }
+                bucket.add(new Entry(task.title(), task.location(), from, to));
+            }
         }
         byDay.values().forEach(list -> list.sort((a, b) -> a.from().compareTo(b.from())));
         return byDay;

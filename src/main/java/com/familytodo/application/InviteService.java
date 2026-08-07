@@ -10,6 +10,7 @@ import com.familytodo.domain.Role;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
+import org.springframework.transaction.annotation.Transactional;
 
 /** Выпуск и погашение приглашений. */
 public class InviteService {
@@ -43,10 +44,24 @@ public class InviteService {
     }
 
     /**
-     * Порядок важен: код гасится <b>последним</b>. Приглашение сначала только читается, а все
-     * отказы происходят до {@code redeem} — иначе родитель, кликнувший по собственной ссылке, сжёг
-     * бы код, предназначенный другому.
+     * Порядок важен дважды.
+     *
+     * <p>Во-первых, код гасится <b>последним</b>: приглашение сначала только читается, а все отказы
+     * происходят до {@code redeem} — иначе родитель, кликнувший по собственной ссылке, сжёг бы код,
+     * предназначенный другому.
+     *
+     * <p>Во-вторых, участник записывается <b>раньше</b> приглашения: {@code invite.used_by}
+     * ссылается на {@code member(id)}. Обратный порядок нарушает внешний ключ — и нарушал, пока это
+     * не всплыло на первой настоящей ссылке. Юнит-тесты на фейках такого не видят, гарантию держит
+     * {@code InviteRedemptionIT} на реальной базе.
+     *
+     * <p>Обе записи идут одной транзакцией: сбой между ними оставил бы человека в семье с живой
+     * одноразовой ссылкой. Транзакция короткая и без сети — отправка в Telegram происходит уже
+     * после возврата, в хендлере. Что аннотация действительно работает, проверяет
+     * {@code InviteTransactionIT} на настоящем контексте: без прокси Spring она была бы пустой
+     * декорацией, которая ничего не откатывает и молчит об этом.
      */
+    @Transactional
     public Member redeem(String code, long telegramUserId, long chatId, String displayName) {
         Optional<Member> existing = members.findByTelegramUserId(telegramUserId);
         Invite invite =
@@ -61,17 +76,22 @@ public class InviteService {
 
         long memberId = members.nextId();
         invite.redeem(memberId, now);
-        invites.save(invite);
 
-        return members.save(
-                Member.join(
-                        memberId,
-                        invite.familyId(),
-                        telegramUserId,
-                        chatId,
-                        displayName,
-                        invite.role(),
-                        now));
+        // строка участника пишется ПЕРВОЙ. `invite.used_by` ссылается на `member(id)`,
+        // и погашение приглашения до создания участника нарушает внешний ключ: в проде
+        // это дало «Что-то пошло не так» на первой же ссылке, отправленной жене.
+        Member joined =
+                members.save(
+                        Member.join(
+                                memberId,
+                                invite.familyId(),
+                                telegramUserId,
+                                chatId,
+                                displayName,
+                                invite.role(),
+                                now));
+        invites.save(invite);
+        return joined;
     }
 
     /**
@@ -84,9 +104,13 @@ public class InviteService {
         }
 
         invite.redeem(member.id(), now);
-        invites.save(invite);
 
+        // тот же порядок, что и у нового участника: сначала то, на что ссылаются.
+        // Здесь строка уже есть и ключ не упал бы, но два разных порядка в одном
+        // методе — приглашение повторить ошибку
         member.rejoin(invite.role(), chatId);
-        return members.save(member);
+        Member joined = members.save(member);
+        invites.save(invite);
+        return joined;
     }
 }

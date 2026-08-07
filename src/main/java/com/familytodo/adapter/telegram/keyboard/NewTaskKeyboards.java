@@ -71,7 +71,7 @@ public final class NewTaskKeyboards {
                 .keyboardRow(
                         new InlineKeyboardRow(
                                 dueButton("В выходные", WEEKEND), dueButton("Без срока", NONE)))
-                .keyboardRow(new InlineKeyboardRow(dueButton("Своя дата", CUSTOM)))
+                .keyboardRow(new InlineKeyboardRow(dueButton("Время и место", CUSTOM)))
                 .build();
     }
 
