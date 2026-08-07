@@ -107,6 +107,26 @@ public class TaskService {
     }
 
     /**
+     * Одна задача с учётом видимости — для карточки.
+     *
+     * <p>Отличается от загрузки для перехода: там достаточно границы семьи, потому что право
+     * проверит домен, а существование задачи внутри своей семьи не секрет. Здесь же наружу идёт
+     * содержимое — название, кто просил, причина отказа, — и ребёнок не должен прочитать чужое даже
+     * по прямому id. Поэтому ответ именно «не найдено».
+     */
+    public Task findVisible(Member actor, long taskId) {
+        Task task = load(actor, taskId);
+        boolean visible =
+                actor.isParent()
+                        || task.assignee().memberId() == actor.id()
+                        || task.creatorId() == actor.id();
+        if (!visible) {
+            throw new DomainException.NotFound("task " + taskId + " not found");
+        }
+        return task;
+    }
+
+    /**
      * Задача ищется только внутри семьи актора. Чужая не «запрещена», а не существует — по
      * подделанному {@code callback_data} нельзя узнать даже факт её наличия.
      */

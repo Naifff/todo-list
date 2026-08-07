@@ -1,5 +1,7 @@
 package com.familytodo.adapter.telegram.view;
 
+import com.familytodo.adapter.telegram.CallbackData;
+import com.familytodo.adapter.telegram.TaskRef;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
 import java.time.Instant;
@@ -7,8 +9,12 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 
 /**
  * Вёрстка списка дел — одним сообщением.
@@ -46,7 +52,14 @@ public final class TaskListView {
 
     private TaskListView() {}
 
-    public static String render(
+    /**
+     * @param text готовая разметка сообщения
+     * @param shown сколько задач реально поместилось — по нему строится клавиатура, иначе кнопка
+     *     указывала бы на строку, которой в сообщении нет
+     */
+    public record Rendered(String text, int shown) {}
+
+    public static Rendered render(
             String header,
             List<Task> tasks,
             Map<Long, Member> byId,
@@ -71,7 +84,34 @@ public final class TaskListView {
         if (shown < tasks.size()) {
             out.append("\n\n…и ещё ").append(tasks.size() - shown);
         }
-        return out.toString();
+        return new Rendered(out.toString(), shown);
+    }
+
+    /** Номерные кнопки под списком: подписи повторяют нумерацию строк, чтобы не искать глазами. */
+    public static InlineKeyboardMarkup keyboard(List<Task> tasks, Kind kind, int shown) {
+        List<InlineKeyboardRow> rows = new ArrayList<>();
+        InlineKeyboardRow row = new InlineKeyboardRow();
+
+        for (int i = 0; i < shown; i++) {
+            row.add(
+                    InlineKeyboardButton.builder()
+                            .text(Integer.toString(i + 1))
+                            .callbackData(
+                                    new CallbackData(
+                                                    TaskCardView.PREFIX,
+                                                    TaskCardView.CARD,
+                                                    TaskRef.format(kind, tasks.get(i).id()))
+                                            .serialize())
+                            .build());
+            if (row.size() == 5) {
+                rows.add(row);
+                row = new InlineKeyboardRow();
+            }
+        }
+        if (!row.isEmpty()) {
+            rows.add(row);
+        }
+        return InlineKeyboardMarkup.builder().keyboard(rows).build();
     }
 
     private static String line(

@@ -53,7 +53,11 @@ class TaskListHandlerTest {
     void setUp() {
         FamilyService familyService = new FamilyService(families, members, tasks, notifier, clock);
         taskService = new TaskService(tasks, members, notifier, clock);
-        handler = new TaskListHandler(taskService, familyService, sender, clock);
+        handler =
+                new TaskListHandler(
+                        new com.familytodo.adapter.telegram.view.TaskListPresenter(
+                                taskService, familyService, sender, clock),
+                        sender);
 
         mom = familyService.createFamily(100000001L, 100000001L, "Мама", "Румянцевы", MOSCOW);
         kid =

@@ -165,7 +165,49 @@ public final class Task {
         closedAt = now;
     }
 
-    // --- права ---
+    // --- права: вопросы ---
+
+    /**
+     * Ответы для вёрстки кнопок. Набор кнопок обязан отражать права, но не он их обеспечивает:
+     * каждый переход проверяет актора заново, потому что нажатие приходит подделываемой строкой.
+     *
+     * <p>Вьюха спрашивает домен, а не повторяет его правила у себя, — иначе два набора условий
+     * разойдутся, и кнопка «Готово» появится там, где нажатие даст отказ.
+     */
+    public boolean mayComplete(Actor actor) {
+        return !status.isClosed()
+                && allows(actor, this::isAssignee, this::isCreator, this::isParent);
+    }
+
+    public boolean mayDecline(Actor actor) {
+        return !status.isClosed() && allows(actor, this::isAssignee);
+    }
+
+    public boolean mayReopen(Actor actor) {
+        return status.isClosed() && allows(actor, this::isAssignee, this::isCreator);
+    }
+
+    public boolean mayModify(Actor actor) {
+        if (!(actor instanceof Actor.MemberActor member) || member.familyId() != familyId) {
+            return false;
+        }
+        return isCreator(member) || (isParent(member) && assignee.isChild());
+    }
+
+    @SafeVarargs
+    private boolean allows(Actor actor, java.util.function.Predicate<Actor.MemberActor>... any) {
+        if (!(actor instanceof Actor.MemberActor member) || member.familyId() != familyId) {
+            return false;
+        }
+        for (java.util.function.Predicate<Actor.MemberActor> rule : any) {
+            if (rule.test(member)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // --- права: проверки ---
 
     @SafeVarargs
     private void requireMember(Actor actor, java.util.function.Predicate<Actor.MemberActor>... any) {

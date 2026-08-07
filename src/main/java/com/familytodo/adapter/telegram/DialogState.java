@@ -25,4 +25,12 @@ public sealed interface DialogState {
 
     /** {@code /new}: выбрали «Своя дата» — ждём её текстом. */
     record AwaitingCustomDueDate(String title, long assigneeId) implements DialogState {}
+
+    /**
+     * Нажали «Не могу» — ждём причину текстом.
+     *
+     * <p>Список запоминается, чтобы после отказа вернуть человека туда, откуда он пришёл.
+     */
+    record AwaitingDeclineReason(long taskId, com.familytodo.adapter.telegram.view.TaskListView.Kind kind)
+            implements DialogState {}
 }

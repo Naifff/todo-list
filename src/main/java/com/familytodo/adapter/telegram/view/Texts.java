@@ -87,5 +87,15 @@ public final class Texts {
 
     public static final String ALL_IS_FOR_PARENTS = "Весь список семьи видят только родители.";
 
+    // --- карточка ---
+
+    public static final String ASK_DECLINE_REASON = "Почему не получится?";
+
+    public static final String DECLINE_REASON_TOO_LONG = "Покороче, пожалуйста — до 200 символов.";
+
+    public static final String DONE_NOTICE = "Отмечено";
+    public static final String DECLINED_NOTICE = "Отказ записан";
+    public static final String REOPENED_NOTICE = "Вернули в работу";
+
     private Texts() {}
 }
