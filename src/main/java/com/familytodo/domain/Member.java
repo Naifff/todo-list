@@ -123,6 +123,26 @@ public final class Member {
         this.role = requireRole(newRole);
     }
 
+    /**
+     * Возвращение в семью по новому приглашению.
+     *
+     * <p>Без этого перехода исключение необратимо: строка с {@code telegram_user_id} остаётся, и
+     * человек навсегда «уже в семье» — ребёнок, исключённый по ошибке, обратно не позовётся.
+     *
+     * <p>Роль берётся из приглашения, а выпустить его может только родитель, так что возврат не
+     * даёт повысить себя самостоятельно.
+     */
+    public void rejoin(Role newRole, long chatId) {
+        if (status != MemberStatus.REMOVED) {
+            throw new DomainException.InvalidTransition(null, "member is already active");
+        }
+        this.status = MemberStatus.ACTIVE;
+        this.role = requireRole(newRole);
+        this.privateChatId = chatId;
+        // раз человек прошёл по ссылке, бот у него не заблокирован
+        this.blockedBot = false;
+    }
+
     public boolean isActive() {
         return status == MemberStatus.ACTIVE;
     }

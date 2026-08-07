@@ -23,5 +23,38 @@ public final class Texts {
 
     public static final String ALREADY_CLOSED = "Задача уже закрыта.";
 
+    // --- онбординг ---
+
+    public static final String ASK_FAMILY_NAME =
+            "Привет! Похоже, ты здесь впервые.\n\nКак назвать семью?";
+
+    public static final String FAMILY_NAME_TOO_LONG =
+            "Слишком длинно. Давай покороче — до 60 символов.";
+
+    public static final String ASK_TIMEZONE =
+            "Какой у вас часовой пояс? От него зависят сроки и время утреннего дайджеста.";
+
+    public static final String ASK_TIMEZONE_AGAIN = "Не понял выбор. Нажми кнопку ещё раз.";
+
+    /**
+     * Один ответ на все причины: истёк, уже использован, не существует. Незнакомец не должен
+     * узнать, какие коды бывают.
+     */
+    public static final String INVITE_INVALID =
+            "Приглашение недействительно. Попроси новую ссылку.";
+
+    public static final String ALREADY_IN_FAMILY = "Ты уже в семье.";
+
+    public static final String MAIN_MENU =
+            """
+            Что я умею:
+
+            /new — попросить кого-то о деле
+            /my — что просили у меня
+            /assigned — что я попросил у других
+            /all — все дела семьи (только для родителей)
+            /family — состав семьи и приглашения
+            /help — эта справка""";
+
     private Texts() {}
 }

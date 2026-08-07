@@ -51,6 +51,7 @@ class UpdateRouterTest {
     private RecordingCommandHandler myCommand;
     private StrangerFriendlyHandler startCommand;
     private RecordingCallbackHandler taskCallbacks;
+    private RecordingDialogHandler dialog;
 
     @BeforeEach
     void setUp() {
@@ -59,11 +60,16 @@ class UpdateRouterTest {
         myCommand = new RecordingCommandHandler(Set.of("my"));
         startCommand = new StrangerFriendlyHandler();
         taskCallbacks = new RecordingCallbackHandler();
+        dialog = new RecordingDialogHandler();
     }
 
     private UpdateRouter router() {
         return new UpdateRouter(
-                members, client, List.of(myCommand, startCommand), List.of(taskCallbacks));
+                members,
+                new BotSender(client),
+                List.of(myCommand, startCommand),
+                List.of(taskCallbacks),
+                List.of(dialog));
     }
 
     @Nested
@@ -334,6 +340,17 @@ class UpdateRouterTest {
         public void handle(BotRequest request) {
             calls++;
             lastArgument = request.commandArgument().orElse(null);
+        }
+    }
+
+    private static final class RecordingDialogHandler implements DialogHandler {
+        boolean claims;
+        int calls;
+
+        @Override
+        public boolean continueDialog(BotRequest request) {
+            calls++;
+            return claims;
         }
     }
 

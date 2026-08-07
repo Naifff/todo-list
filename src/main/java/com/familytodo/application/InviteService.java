@@ -9,6 +9,7 @@ import com.familytodo.domain.Member;
 import com.familytodo.domain.Role;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Optional;
 
 /** Выпуск и погашение приглашений. */
 public class InviteService {
@@ -42,21 +43,22 @@ public class InviteService {
     }
 
     /**
-     * Порядок проверок важен: сначала «этот человек уже в семье», потом состояние приглашения.
-     * Иначе повторный переход по своей же ссылке гасит код, который предназначался другому.
+     * Порядок важен: код гасится <b>последним</b>. Приглашение сначала только читается, а все
+     * отказы происходят до {@code redeem} — иначе родитель, кликнувший по собственной ссылке, сжёг
+     * бы код, предназначенный другому.
      */
     public Member redeem(String code, long telegramUserId, long chatId, String displayName) {
-        members.findByTelegramUserId(telegramUserId)
-                .ifPresent(
-                        existing -> {
-                            throw new DomainException.NotPermitted("person already in a family");
-                        });
-
+        Optional<Member> existing = members.findByTelegramUserId(telegramUserId);
         Invite invite =
                 invites.findByCode(code)
                         .orElseThrow(() -> new DomainException.NotFound("invite not found"));
 
         Instant now = clock.instant();
+
+        if (existing.isPresent()) {
+            return rejoin(existing.get(), invite, chatId, now);
+        }
+
         long memberId = members.nextId();
         invite.redeem(memberId, now);
         invites.save(invite);
@@ -70,5 +72,21 @@ public class InviteService {
                         displayName,
                         invite.role(),
                         now));
+    }
+
+    /**
+     * Исключённого можно позвать обратно — но только в ту же семью: {@code telegram_user_id}
+     * уникален глобально, и его строка принадлежит прежней семье.
+     */
+    private Member rejoin(Member member, Invite invite, long chatId, Instant now) {
+        if (member.isActive() || member.familyId() != invite.familyId()) {
+            throw new DomainException.NotPermitted("person already in a family");
+        }
+
+        invite.redeem(member.id(), now);
+        invites.save(invite);
+
+        member.rejoin(invite.role(), chatId);
+        return members.save(member);
     }
 }

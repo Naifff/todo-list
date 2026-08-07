@@ -5,7 +5,6 @@ import com.familytodo.application.port.MemberRepository;
 import com.familytodo.domain.DomainException;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.TaskStatus;
-import java.io.Serializable;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,14 +12,9 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
-import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
-import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
-import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 /**
  * Единственная точка входа апдейтов.
@@ -42,17 +36,20 @@ public class UpdateRouter {
     private static final Logger log = LoggerFactory.getLogger(UpdateRouter.class);
 
     private final MemberRepository members;
-    private final TelegramClient client;
+    private final BotSender sender;
+    private final List<DialogHandler> dialogs;
     private final Map<String, CommandHandler> commands = new HashMap<>();
     private final Map<String, CallbackHandler> callbacks = new HashMap<>();
 
     public UpdateRouter(
             MemberRepository members,
-            TelegramClient client,
+            BotSender sender,
             List<CommandHandler> commandHandlers,
-            List<CallbackHandler> callbackHandlers) {
+            List<CallbackHandler> callbackHandlers,
+            List<DialogHandler> dialogHandlers) {
         this.members = members;
-        this.client = client;
+        this.sender = sender;
+        this.dialogs = dialogHandlers;
         commandHandlers.forEach(
                 handler -> handler.commands().forEach(name -> commands.put(name, handler)));
         callbackHandlers.forEach(handler -> callbacks.put(handler.prefix(), handler));
@@ -71,10 +68,10 @@ public class UpdateRouter {
         try {
             dispatch(request);
         } catch (DomainException e) {
-            reply(request.chatId(), userText(e));
+            sender.send(request.chatId(), userText(e));
         } catch (RuntimeException e) {
             log.error("failed to handle message from user {}", request.telegramUserId(), e);
-            reply(request.chatId(), Texts.INTERNAL_ERROR);
+            sender.send(request.chatId(), Texts.INTERNAL_ERROR);
         }
     }
 
@@ -97,7 +94,7 @@ public class UpdateRouter {
             log.error("failed to handle callback from user {}", request.telegramUserId(), e);
             notice = Texts.INTERNAL_ERROR;
         } finally {
-            answer(query.getId(), notice);
+            sender.answerCallback(query.getId(), notice);
         }
     }
 
@@ -107,8 +104,11 @@ public class UpdateRouter {
         if (request.member().isEmpty()) {
             if (handler.filter(CommandHandler::allowsStrangers).isPresent()) {
                 handler.get().handle(request);
+            } else if (request.command().isEmpty() && continueDialog(request)) {
+                // бот сам начал разговор — отвечать на свой же вопрос человеку можно
+                return;
             } else {
-                reply(request.chatId(), Texts.STRANGER);
+                sender.send(request.chatId(), Texts.STRANGER);
             }
             return;
         }
@@ -116,29 +116,35 @@ public class UpdateRouter {
         if (handler.isPresent()) {
             handler.get().handle(request);
         } else if (request.command().isPresent()) {
-            reply(request.chatId(), Texts.UNKNOWN_COMMAND);
-        } else {
-            freeTextFallback(request);
+            sender.send(request.chatId(), Texts.UNKNOWN_COMMAND);
+        } else if (!continueDialog(request)) {
+            sender.send(request.chatId(), Texts.UNKNOWN_COMMAND);
         }
     }
 
-    private String dispatchCallback(BotRequest request, String raw) {
-        if (request.member().isEmpty()) {
-            return Texts.STRANGER;
+    /** Свободный текст принимается только внутри начатого сценария. */
+    private boolean continueDialog(BotRequest request) {
+        for (DialogHandler dialog : dialogs) {
+            if (dialog.continueDialog(request)) {
+                return true;
+            }
         }
+        return false;
+    }
+
+    private String dispatchCallback(BotRequest request, String raw) {
         CallbackData data = CallbackData.parse(raw);
         CallbackHandler handler = callbacks.get(data.prefix());
         if (handler == null) {
             log.warn("no handler for callback prefix {}", data.prefix());
             return Texts.INTERNAL_ERROR;
         }
+        // онбординг доступен тому, кто ещё не в семье, — это его единственный путь внутрь
+        if (request.member().isEmpty() && !handler.allowsStrangers()) {
+            return Texts.STRANGER;
+        }
         handler.handle(request, data);
         return null;
-    }
-
-    /** Свободный текст вне диалога — пока не команда и не шаг сценария; сценарии добавит задача 14. */
-    private void freeTextFallback(BotRequest request) {
-        reply(request.chatId(), Texts.UNKNOWN_COMMAND);
     }
 
     private BotRequest parse(Message message) {
@@ -156,6 +162,7 @@ public class UpdateRouter {
         return new BotRequest(
                 userId,
                 message.getChatId(),
+                displayName(message.getFrom().getFirstName(), userId),
                 members.findByTelegramUserId(userId).filter(Member::isActive),
                 text,
                 Optional.ofNullable(command),
@@ -166,19 +173,24 @@ public class UpdateRouter {
 
     private BotRequest parse(CallbackQuery query) {
         long userId = query.getFrom().getId();
-        Integer messageId =
-                query.getMessage() == null ? null : query.getMessage().getMessageId();
+        Integer messageId = query.getMessage() == null ? null : query.getMessage().getMessageId();
         long chatId = query.getMessage() == null ? userId : query.getMessage().getChatId();
 
         return new BotRequest(
                 userId,
                 chatId,
+                displayName(query.getFrom().getFirstName(), userId),
                 members.findByTelegramUserId(userId).filter(Member::isActive),
                 "",
                 Optional.empty(),
                 Optional.empty(),
                 Optional.ofNullable(messageId),
                 Optional.of(query.getId()));
+    }
+
+    /** Имя в профиле можно очистить — пустое сломало бы создание участника. */
+    private static String displayName(String firstName, long userId) {
+        return firstName == null || firstName.isBlank() ? "Участник " + userId : firstName;
     }
 
     private String userText(DomainException e) {
@@ -199,32 +211,5 @@ public class UpdateRouter {
             case OPEN -> Texts.ALREADY_OPEN;
             case DECLINED -> Texts.ALREADY_CLOSED;
         };
-    }
-
-    /**
-     * Текст уходит как есть, без экранирования: сюда попадают только собственные сообщения бота, а
-     * пользовательский текст экранирует вёрстка, которая его и вставляет. Экранировать здесь
-     * значило бы разрушать разметку, собранную во вьюхах.
-     */
-    private void reply(long chatId, String text) {
-        send(SendMessage.builder().chatId(chatId).text(text).parseMode("HTML").build());
-    }
-
-    private void answer(String callbackQueryId, String notice) {
-        AnswerCallbackQuery.AnswerCallbackQueryBuilder<?, ?> builder =
-                AnswerCallbackQuery.builder().callbackQueryId(callbackQueryId);
-        if (notice != null) {
-            builder.text(notice);
-        }
-        send(builder.build());
-    }
-
-    private <T extends Serializable, M extends BotApiMethod<T>> void send(M method) {
-        try {
-            client.execute(method);
-        } catch (TelegramApiException e) {
-            // текст ошибки может содержать сообщение пользователя — в лог только класс
-            log.warn("telegram call failed: {}", e.getClass().getSimpleName());
-        }
     }
 }
