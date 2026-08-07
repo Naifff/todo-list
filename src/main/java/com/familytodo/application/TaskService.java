@@ -96,6 +96,34 @@ public class TaskService {
         return tasks.save(task);
     }
 
+    /**
+     * Смена исполнителя. Уведомляются обе стороны: новый — что на нём дело, прежний — что с него
+     * сняли. Молча переложить просьбу на другого нельзя, иначе первый продолжит её держать в голове.
+     */
+    public Task reassign(Member actor, long taskId, long newAssigneeId) {
+        Task task = load(actor, taskId);
+        Member newAssignee = requireActiveMember(actor.familyId(), newAssigneeId);
+
+        Assignee previous =
+                task.reassign(
+                        actor.asActor(), new Assignee(newAssignee.id(), newAssignee.role()));
+        Task saved = tasks.save(task);
+
+        if (previous.memberId() != newAssignee.id()) {
+            notifyMember(actor, previous.memberId(), r -> notifier.taskUnassigned(r, saved));
+            notifyMember(actor, newAssignee.id(), r -> notifier.taskAssigned(r, saved));
+        }
+        return saved;
+    }
+
+    /** Время и место. Уведомлений не шлём: это уточнение уже принятой просьбы, а не новая. */
+    public Task schedule(
+            Member actor, long taskId, Instant startsAt, Instant endsAt, String location) {
+        Task task = load(actor, taskId);
+        task.schedule(actor.asActor(), startsAt, endsAt, location);
+        return tasks.save(task);
+    }
+
     public void delete(Member actor, long taskId) {
         Task task = load(actor, taskId);
         task.assertDeletableBy(actor.asActor());
@@ -104,6 +132,26 @@ public class TaskService {
 
     public List<Task> find(TaskQuery query) {
         return tasks.find(query);
+    }
+
+    /**
+     * Одна задача с учётом видимости — для карточки.
+     *
+     * <p>Отличается от загрузки для перехода: там достаточно границы семьи, потому что право
+     * проверит домен, а существование задачи внутри своей семьи не секрет. Здесь же наружу идёт
+     * содержимое — название, кто просил, причина отказа, — и ребёнок не должен прочитать чужое даже
+     * по прямому id. Поэтому ответ именно «не найдено».
+     */
+    public Task findVisible(Member actor, long taskId) {
+        Task task = load(actor, taskId);
+        boolean visible =
+                actor.isParent()
+                        || task.assignee().memberId() == actor.id()
+                        || task.creatorId() == actor.id();
+        if (!visible) {
+            throw new DomainException.NotFound("task " + taskId + " not found");
+        }
+        return task;
     }
 
     /**

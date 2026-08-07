@@ -1,5 +1,6 @@
 package com.familytodo.config;
 
+import com.familytodo.application.DueDateParser;
 import com.familytodo.application.FamilyService;
 import com.familytodo.application.InviteService;
 import com.familytodo.application.TaskService;
@@ -30,6 +31,11 @@ public class ApplicationConfig {
     @Bean
     public Clock clock() {
         return Clock.systemUTC();
+    }
+
+    @Bean
+    public DueDateParser dueDateParser(Clock clock) {
+        return new DueDateParser(clock);
     }
 
     @Bean

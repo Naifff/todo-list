@@ -50,11 +50,88 @@ public final class Texts {
             Что я умею:
 
             /new — попросить кого-то о деле
+            /agenda — расписание на день, 3 дня, неделю, месяц
             /my — что просили у меня
             /assigned — что я попросил у других
             /all — все дела семьи (только для родителей)
             /family — состав семьи и приглашения
             /help — эта справка""";
+
+    // --- создание задачи ---
+
+    public static final String ASK_TASK_TITLE = "Что нужно сделать?";
+
+    public static final String TASK_TITLE_TOO_LONG =
+            "Слишком длинно. До 200 символов — это просьба, а не инструкция.";
+
+    public static final String ASK_ASSIGNEE = "Кого попросить?";
+
+    public static final String ASK_DUE = "К какому сроку?";
+
+    public static final String ASK_CUSTOM_DUE =
+            "Напиши срок: <code>15.08</code>, <code>15.08 18:30</code> или <code>18:30</code>";
+
+    public static final String DUE_NOT_PARSED =
+            "Не понял срок. Попробуй так: <code>15.08</code>, <code>15.08 18:30</code> или <code>18:30</code>";
+
+    public static final String ASK_SLOT =
+            "Напиши когда и где: <code>08:00-08:40 школа</code>, <code>19:00 дом</code>, "
+                    + "просто <code>Zoom</code> — или <code>-</code>, чтобы убрать.";
+
+    public static final String SLOT_NOT_PARSED =
+            "Не понял. Формат: <code>08:00-08:40 школа</code>, <code>19:00 дом</code> "
+                    + "или просто место.";
+
+    public static final String DIALOG_EXPIRED = "Начнём заново: /new";
+
+    // --- списки ---
+
+    public static final String MINE_HEADER = "Что просят у меня";
+    public static final String REQUESTED_HEADER = "Что я попросил";
+    public static final String ALL_HEADER = "Все дела семьи";
+
+    public static final String MINE_EMPTY = "У тебя ничего не просят.";
+    public static final String REQUESTED_EMPTY = "Ты пока ни о чём не просил.";
+    public static final String ALL_EMPTY = "Открытых дел нет.";
+
+    public static final String AGENDA_EMPTY = "На этот срок дел нет.";
+
+    public static final String ALL_IS_FOR_PARENTS = "Весь список семьи видят только родители.";
+
+    // --- карточка ---
+
+    public static final String ASK_DECLINE_REASON = "Почему не получится?";
+
+    public static final String DECLINE_REASON_TOO_LONG = "Покороче, пожалуйста — до 200 символов.";
+
+    // --- семья ---
+
+    public static final String FAMILY_HEADER = "Семья";
+
+    public static final String INVITE_IS_FOR_PARENTS = "Приглашать могут только родители.";
+
+    public static final String REMOVE_IS_FOR_PARENTS = "Исключать могут только родители.";
+
+    public static final String SETTINGS_ARE_FOR_PARENTS = "Настройки меняют только родители.";
+
+    /** Отказ должен объяснять, а не просто запрещать: иначе выглядит как поломка. */
+    public static final String LAST_PARENT_STAYS =
+            "Это единственный родитель. Без него некому будет приглашать и управлять семьёй — "
+                    + "сначала сделай родителем кого-то ещё.";
+
+    public static final String NOBODY_TO_REMOVE = "Кроме тебя в семье никого нет.";
+
+    public static final String ASK_WHO_TO_REMOVE = "Кого исключить?";
+
+    public static final String REMOVED_NOTICE = "Исключён";
+
+    public static final String TIMEZONE_SAVED = "Часовой пояс сохранён";
+
+    public static final String DIGEST_SAVED = "Время дайджеста сохранено";
+
+    public static final String DONE_NOTICE = "Отмечено";
+    public static final String DECLINED_NOTICE = "Отказ записан";
+    public static final String REOPENED_NOTICE = "Вернули в работу";
 
     private Texts() {}
 }

@@ -3,6 +3,7 @@ package com.familytodo.application;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Role;
 import com.familytodo.domain.TaskStatus;
+import java.time.Instant;
 import java.util.EnumSet;
 import java.util.Set;
 
@@ -21,7 +22,20 @@ public record TaskQuery(
         Long visibleToMemberId,
         Long assigneeId,
         Long creatorId,
-        Set<TaskStatus> statuses) {
+        Set<TaskStatus> statuses,
+        Instant from,
+        Instant to,
+        boolean undatedOnly) {
+
+    /** Прежняя форма без горизонта: подавляющее большинство выборок не про диапазон дат. */
+    public TaskQuery(
+            long familyId,
+            Long visibleToMemberId,
+            Long assigneeId,
+            Long creatorId,
+            Set<TaskStatus> statuses) {
+        this(familyId, visibleToMemberId, assigneeId, creatorId, statuses, null, null, false);
+    }
 
     private static final Set<TaskStatus> OPEN_ONLY = EnumSet.of(TaskStatus.OPEN);
 
@@ -55,7 +69,36 @@ public record TaskQuery(
     }
 
     public TaskQuery withStatuses(Set<TaskStatus> newStatuses) {
-        return new TaskQuery(familyId, visibleToMemberId, assigneeId, creatorId, newStatuses);
+        return new TaskQuery(
+                familyId, visibleToMemberId, assigneeId, creatorId, newStatuses, from, to,
+                undatedOnly);
+    }
+
+    /**
+     * Дела, попадающие в горизонт. Момент дела — начало интервала, а если его нет, то срок:
+     * «отвезти детей 08:00» стоит в календаре по началу, «вынести мусор к 19:00» — по сроку.
+     */
+    public static TaskQuery inRange(Member viewer, Instant from, Instant to) {
+        return new TaskQuery(
+                viewer.familyId(),
+                visibilityLimit(viewer),
+                null,
+                null,
+                OPEN_ONLY,
+                from,
+                to,
+                false);
+    }
+
+    /**
+     * Дела без срока и без интервала.
+     *
+     * <p>Отдельной выборкой, а не приписанные к сегодня: «когда-нибудь разобрать шкаф» не обещано
+     * на сегодня, и показывать его среди сегодняшних значило бы врать.
+     */
+    public static TaskQuery undated(Member viewer) {
+        return new TaskQuery(
+                viewer.familyId(), visibilityLimit(viewer), null, null, OPEN_ONLY, null, null, true);
     }
 
     private static Long visibilityLimit(Member viewer) {

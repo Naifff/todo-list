@@ -2,6 +2,8 @@ package com.familytodo.application.port;
 
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
+import java.time.ZoneId;
+import java.util.List;
 
 /**
  * Порт доставки уведомлений. Реализация решает, куда и как писать; юзкейс — только кому и о чём.
@@ -28,4 +30,15 @@ public interface Notifier {
 
     /** Задачу переназначили на другого — прежнему исполнителю. */
     void taskUnassigned(Member recipient, Task task);
+
+    /** Наступил срок. */
+    void taskDue(Member recipient, Task task);
+
+    /**
+     * Утренний список. Считается на каждого отдельно: родитель видит дела всей семьи, ребёнок —
+     * только свои, поэтому одним сообщением на семью тут не обойтись.
+     *
+     * @param family состав семьи — нужен, чтобы подписать, кто кого просил
+     */
+    void digest(Member recipient, List<Task> tasks, List<Member> family, ZoneId zone);
 }

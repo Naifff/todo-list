@@ -34,6 +34,9 @@ public final class TaskRowMapper implements RowMapper<Task> {
                 Instants.read(rs, "due_at"),
                 rs.getString("decline_reason"),
                 Instants.read(rs, "created_at"),
-                Instants.read(rs, "closed_at"));
+                Instants.read(rs, "closed_at"),
+                Instants.read(rs, "starts_at"),
+                Instants.read(rs, "ends_at"),
+                rs.getString("location"));
     }
 }

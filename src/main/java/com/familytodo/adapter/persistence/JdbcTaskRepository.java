@@ -26,6 +26,7 @@ public class JdbcTaskRepository implements TaskRepository {
             """
             select t.id, t.family_id, t.title, t.creator_id, t.assignee_id,
                    t.status, t.due_at, t.decline_reason, t.created_at, t.closed_at,
+                   t.starts_at, t.ends_at, t.location,
                    m.role as assignee_role
             from task t
             join member m on m.id = t.assignee_id
@@ -34,15 +35,19 @@ public class JdbcTaskRepository implements TaskRepository {
     private static final String UPSERT =
             """
             insert into task (id, family_id, title, creator_id, assignee_id,
-                              status, due_at, decline_reason, created_at, closed_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              status, due_at, decline_reason, created_at, closed_at,
+                              starts_at, ends_at, location)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict (id) do update set
                 title          = excluded.title,
                 assignee_id    = excluded.assignee_id,
                 status         = excluded.status,
                 due_at         = excluded.due_at,
                 decline_reason = excluded.decline_reason,
-                closed_at      = excluded.closed_at
+                closed_at      = excluded.closed_at,
+                starts_at      = excluded.starts_at,
+                ends_at        = excluded.ends_at,
+                location       = excluded.location
             """;
 
     private final JdbcClient jdbc;
@@ -71,7 +76,10 @@ public class JdbcTaskRepository implements TaskRepository {
                         Instants.write(task.dueAt()),
                         task.declineReason(),
                         Instants.write(task.createdAt()),
-                        Instants.write(task.closedAt()))
+                        Instants.write(task.closedAt()),
+                        Instants.write(task.startsAt()),
+                        Instants.write(task.endsAt()),
+                        task.location())
                 .update();
         return task;
     }
@@ -113,8 +121,22 @@ public class JdbcTaskRepository implements TaskRepository {
             params.add(query.creatorId());
         }
 
+        // момент дела — начало интервала, иначе срок; фильтр в SQL, а не отсевом
+        if (query.from() != null) {
+            sql.append(" and coalesce(t.starts_at, t.due_at) >= ?");
+            params.add(query.from().toEpochMilli());
+        }
+        if (query.to() != null) {
+            sql.append(" and coalesce(t.starts_at, t.due_at) < ?");
+            params.add(query.to().toEpochMilli());
+        }
+        if (query.undatedOnly()) {
+            sql.append(" and t.starts_at is null and t.due_at is null");
+        }
+
         // сначала со сроком по возрастанию, бессрочные в конце
-        sql.append(" order by coalesce(t.due_at, 9223372036854775807), t.id");
+        sql.append(
+                " order by coalesce(t.starts_at, t.due_at, 9223372036854775807), t.id");
 
         return jdbc.sql(sql.toString()).params(params).query(TaskRowMapper.INSTANCE).list();
     }

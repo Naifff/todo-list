@@ -10,6 +10,7 @@ import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiRequestException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 /**
@@ -30,12 +31,16 @@ public class BotSender {
         this.client = client;
     }
 
-    public void send(long chatId, String html) {
-        send(chatId, html, null);
+    public boolean send(long chatId, String html) {
+        return send(chatId, html, null);
     }
 
-    public void send(long chatId, String html, InlineKeyboardMarkup markup) {
-        execute(
+    /**
+     * @return {@code false}, если получатель заблокировал бота — вызывающий решает, что с этим
+     *     делать. Молча проглотить нельзя: иначе напоминания годами уходят в никуда
+     */
+    public boolean send(long chatId, String html, InlineKeyboardMarkup markup) {
+        return execute(
                 SendMessage.builder()
                         .chatId(chatId)
                         .text(html)
@@ -65,12 +70,32 @@ public class BotSender {
         execute(builder.build());
     }
 
-    private <T extends Serializable, M extends BotApiMethod<T>> void execute(M method) {
+    /**
+     * @return {@code false}, если получатель недостижим навсегда — заблокировал бота или удалил
+     *     аккаунт. Прочие сбои проглатываются: сеть моргнула, повторим в следующий раз
+     */
+    private <T extends Serializable, M extends BotApiMethod<T>> boolean execute(M method) {
         try {
             client.execute(method);
+            return true;
+        } catch (TelegramApiRequestException e) {
+            if (isPermanentlyUnreachable(e)) {
+                return false;
+            }
+            // текст ошибки может содержать сообщение пользователя — в лог только код
+            log.warn("telegram call failed with code {}", e.getErrorCode());
+            return true;
         } catch (TelegramApiException e) {
-            // текст ошибки может содержать сообщение пользователя — в лог только класс
             log.warn("telegram call failed: {}", e.getClass().getSimpleName());
+            return true;
         }
+    }
+
+    /**
+     * 403 приходит и на «bot was blocked by the user», и на «user is deactivated». Оба означают
+     * одно: писать этому человеку больше некуда, и повторять попытки бессмысленно.
+     */
+    private static boolean isPermanentlyUnreachable(TelegramApiRequestException e) {
+        return e.getErrorCode() != null && e.getErrorCode() == 403;
     }
 }

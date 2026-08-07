@@ -183,9 +183,113 @@ class TaskRepositoryIT extends AbstractSqliteIT {
                 .containsExactly("Раньше", "Позже", "Без срока");
     }
 
+    /** Интервал и место должны переживать запись и чтение — их добавила V2. */
+    @Test
+    void roundTripsScheduleAndLocation() {
+        Task task = repository.save(open(100L, FAMILY_A, MOM, KID, Role.CHILD));
+        task.schedule(
+                com.familytodo.domain.Actor.member(MOM, FAMILY_A, Role.PARENT),
+                Instant.parse("2026-09-01T05:00:00Z"),
+                Instant.parse("2026-09-01T05:40:00Z"),
+                "школа");
+        repository.save(task);
+
+        Task loaded = repository.findById(FAMILY_A, 100L).orElseThrow();
+
+        assertThat(loaded.startsAt()).isEqualTo(Instant.parse("2026-09-01T05:00:00Z"));
+        assertThat(loaded.endsAt()).isEqualTo(Instant.parse("2026-09-01T05:40:00Z"));
+        assertThat(loaded.location()).isEqualTo("школа");
+        assertThat(loaded.isScheduled()).isTrue();
+    }
+
+    @Test
+    void clearedScheduleIsStoredAsNull() {
+        Task task = repository.save(open(100L, FAMILY_A, MOM, KID, Role.CHILD));
+        var actor = com.familytodo.domain.Actor.member(MOM, FAMILY_A, Role.PARENT);
+        task.schedule(actor, Instant.parse("2026-09-01T05:00:00Z"), null, "школа");
+        repository.save(task);
+
+        task.schedule(actor, null, null, null);
+        repository.save(task);
+
+        Task loaded = repository.findById(FAMILY_A, 100L).orElseThrow();
+        assertThat(loaded.startsAt()).isNull();
+        assertThat(loaded.location()).isNull();
+    }
+
+    /** Горизонт считается в SQL: дело попадает в окно по началу интервала, иначе по сроку. */
+    @Test
+    void filtersByRangeInSql() {
+        repository.save(dated(100L, "Сегодня", "2026-08-07T16:00:00Z"));
+        repository.save(dated(101L, "Через неделю", "2026-08-14T16:00:00Z"));
+
+        List<Task> window =
+                repository.find(
+                        new TaskQuery(
+                                FAMILY_A,
+                                null,
+                                null,
+                                null,
+                                OPEN,
+                                Instant.parse("2026-08-07T00:00:00Z"),
+                                Instant.parse("2026-08-08T00:00:00Z"),
+                                false));
+
+        assertThat(window).extracting(Task::title).containsExactly("Сегодня");
+    }
+
+    @Test
+    void scheduledTaskEntersTheWindowByItsStartNotItsDeadline() {
+        Task task = repository.save(dated(100L, "Отвезти детей", "2026-08-20T16:00:00Z"));
+        task.schedule(
+                com.familytodo.domain.Actor.member(MOM, FAMILY_A, Role.PARENT),
+                Instant.parse("2026-08-07T05:00:00Z"),
+                null,
+                null);
+        repository.save(task);
+
+        List<Task> window =
+                repository.find(
+                        new TaskQuery(
+                                FAMILY_A,
+                                null,
+                                null,
+                                null,
+                                OPEN,
+                                Instant.parse("2026-08-07T00:00:00Z"),
+                                Instant.parse("2026-08-08T00:00:00Z"),
+                                false));
+
+        assertThat(window).extracting(Task::title).containsExactly("Отвезти детей");
+    }
+
+    @Test
+    void undatedQueryReturnsOnlyTasksWithNeitherDeadlineNorInterval() {
+        repository.save(dated(100L, "Со сроком", "2026-08-07T16:00:00Z"));
+        repository.save(
+                Task.create(
+                        101L, FAMILY_A, "Без срока", MOM, new Assignee(KID, Role.CHILD), null, CREATED));
+
+        List<Task> undated =
+                repository.find(new TaskQuery(FAMILY_A, null, null, null, OPEN, null, null, true));
+
+        assertThat(undated).extracting(Task::title).containsExactly("Без срока");
+    }
+
     @Test
     void doesNotHandOutTheSameIdTwice() {
         assertThat(repository.nextId()).isNotEqualTo(repository.nextId());
+    }
+
+    private static Task dated(long id, String title, String dueAt) {
+        return Task.create(
+                id,
+                FAMILY_A,
+                title,
+                MOM,
+                new Assignee(KID, Role.CHILD),
+                Instant.parse(dueAt),
+                CREATED);
     }
 
     private static Task open(long id, long familyId, long creator, long assignee, Role role) {
