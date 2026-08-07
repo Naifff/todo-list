@@ -80,6 +80,7 @@ public class FamilyHandler implements CommandHandler, CallbackHandler {
             case FamilyView.SETTINGS -> showSettings(request, actor);
             case FamilyView.TIMEZONE -> timezone(request, actor, data.argument());
             case FamilyView.DIGEST -> digest(request, actor, data.argument());
+            case FamilyView.HORIZON -> horizon(request, actor, data.argument());
             default -> log.warn("unknown family action {}", data.action());
         }
     }
@@ -180,6 +181,31 @@ public class FamilyHandler implements CommandHandler, CallbackHandler {
         }
 
         families.changeTimezone(actor, zone.get());
+        showMenu(request, actor);
+    }
+
+    /**
+     * Горизонт приходит из {@code callback_data}, то есть от клиента. Проверку значения держит
+     * домен: набор допустимых горизонтов — правило семьи, а не свойство клавиатуры.
+     */
+    private void horizon(BotRequest request, Member actor, String argument) {
+        if (refuseNonParent(actor, Texts.SETTINGS_ARE_FOR_PARENTS, request)) {
+            return;
+        }
+
+        if ("ask".equals(argument)) {
+            edit(request, "На сколько дней вперёд присылать список?", FamilyView.digestHorizons());
+            return;
+        }
+
+        int days;
+        try {
+            days = Integer.parseInt(argument);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("digest horizon is not a number", e);
+        }
+
+        families.changeDigestHorizon(actor, days);
         showMenu(request, actor);
     }
 

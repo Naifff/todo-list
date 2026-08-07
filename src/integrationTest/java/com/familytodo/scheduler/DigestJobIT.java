@@ -154,6 +154,118 @@ class DigestJobIT extends AbstractSqliteIT {
         }
     }
 
+    /**
+     * Горизонт дайджеста: на сколько дней вперёд собирать список.
+     *
+     * <p>Вперёд горизонт ограничивает, назад — нет. Просроченное с ростом срока не становится менее
+     * важным, а дела без даты не с чем сравнивать: «купить хлеб» не обещано ни на какой день, но
+     * из семейного списка от этого не исчезает.
+     */
+    @Nested
+    class Horizon {
+
+        /** 08:00 по Москве 7 августа 2026 — момент рассылки во всех тестах ниже. */
+        private static final Instant DIGEST_MOMENT = Instant.parse("2026-08-07T05:00:00Z");
+
+        @Test
+        void oneDayShowsTodayButNotTomorrow() {
+            Family family = family("Румянцевы", MOSCOW);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            dated(family, mom, "Сегодняшнее", "2026-08-07T16:00:00Z");
+            dated(family, mom, "Завтрашнее", "2026-08-08T16:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.sizeFor(mom.id())).isEqualTo(1);
+        }
+
+        @Test
+        void sevenDaysReachTheWholeWeek() {
+            Family family = withHorizon("Румянцевы", 7);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            dated(family, mom, "Сегодняшнее", "2026-08-07T16:00:00Z");
+            dated(family, mom, "Завтрашнее", "2026-08-08T16:00:00Z");
+            dated(family, mom, "Через шесть дней", "2026-08-13T16:00:00Z");
+            dated(family, mom, "Через неделю с лишним", "2026-08-15T16:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.sizeFor(mom.id())).isEqualTo(3);
+        }
+
+        @Test
+        void thirtyDaysReachTheMonth() {
+            Family family = withHorizon("Румянцевы", 30);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            dated(family, mom, "Сегодняшнее", "2026-08-07T16:00:00Z");
+            dated(family, mom, "Через неделю с лишним", "2026-08-15T16:00:00Z");
+            dated(family, mom, "Через два месяца", "2026-10-07T16:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.sizeFor(mom.id())).isEqualTo(2);
+        }
+
+        @Test
+        void overdueIsInTheDigestAtEveryHorizon() {
+            Family family = family("Румянцевы", MOSCOW);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            dated(family, mom, "Просрочено на два дня", "2026-08-05T16:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.sizeFor(mom.id())).isEqualTo(1);
+        }
+
+        /** Дело без срока не с чем сравнивать — горизонт его не касается. */
+        @Test
+        void undatedIsInTheDigestAtEveryHorizon() {
+            Family family = family("Румянцевы", MOSCOW);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            task(family, mom, "Когда-нибудь разобрать гараж");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.sizeFor(mom.id())).isEqualTo(1);
+        }
+
+        @Test
+        void horizonIsReadFromTheFamilyNotHardcoded() {
+            Family narrow = family("Узкие", MOSCOW);
+            Member one = join(narrow, 100000001L, "Мама", Role.PARENT);
+            dated(narrow, one, "Завтрашнее", "2026-08-08T16:00:00Z");
+
+            Family wide = withHorizon("Широкие", 7);
+            Member two = join(wide, 512034877L, "Тётя", Role.PARENT);
+            dated(wide, two, "Завтрашнее", "2026-08-08T16:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.recipients).containsExactly(two.id());
+        }
+
+        /** Горизонт переживает перезапуск: он в базе, а не в памяти джобы. */
+        @Test
+        void horizonSurvivesReload() {
+            Family family = withHorizon("Румянцевы", 7);
+
+            assertThat(familyRepository.findById(family.id()).orElseThrow().digestHorizonDays())
+                    .isEqualTo(7);
+        }
+
+        private Family withHorizon(String name, int days) {
+            Family family = family(name, MOSCOW);
+            family.changeDigestHorizon(anyParentOf(family), days);
+            return familyRepository.save(family);
+        }
+    }
+
     @Nested
     class Contents {
 
@@ -286,6 +398,33 @@ class DigestJobIT extends AbstractSqliteIT {
         task(family, who, who, title);
     }
 
+    private void dated(Family family, Member who, String title, String dueAt) {
+        tasks.save(
+                Task.create(
+                        tasks.nextId(),
+                        family.id(),
+                        title,
+                        who.id(),
+                        new Assignee(who.id(), who.role()),
+                        Instant.parse(dueAt),
+                        clock.instant()));
+    }
+
+    /** Настройки семьи меняет родитель — здесь важна не проверка прав, а сама смена значения. */
+    private com.familytodo.domain.Actor anyParentOf(Family family) {
+        return Member.restore(
+                        -1L,
+                        family.id(),
+                        -1L,
+                        -1L,
+                        "Родитель",
+                        Role.PARENT,
+                        com.familytodo.domain.MemberStatus.ACTIVE,
+                        false,
+                        YESTERDAY_NOON)
+                .asActor();
+    }
+
     private void task(Family family, Member creator, Member assignee, String title) {
         tasks.save(
                 Task.create(
@@ -302,13 +441,20 @@ class DigestJobIT extends AbstractSqliteIT {
         private final List<Long> recipients = new ArrayList<>();
         private final List<Integer> sizes = new ArrayList<>();
         private final List<Long> failing = new ArrayList<>();
+        private final List<Integer> horizons = new ArrayList<>();
 
         int sizeFor(long memberId) {
             return sizes.get(recipients.indexOf(memberId));
         }
 
         @Override
-        public void digest(Member recipient, List<Task> tasks, List<Member> family, ZoneId zone) {
+        public void digest(
+                Member recipient,
+                List<Task> tasks,
+                List<Member> family,
+                ZoneId zone,
+                int horizonDays) {
+            horizons.add(horizonDays);
             if (failing.contains(recipient.id())) {
                 throw new IllegalStateException("телеграм недоступен");
             }
