@@ -99,6 +99,58 @@ class CalendarRendererTest {
                     .isFalse();
         }
 
+        /**
+         * Ночное дело обязано быть на картинке.
+         *
+         * <p>Отказ из прода: «спать 22:40-08:00» в списке было, а на календаре его не было вовсе.
+         * Граница оси считалась по {@code to.getHour()}, а у дела через полночь это 8 — ось не
+         * растягивалась, и блок отсеивался как лежащий за её пределами. Рисование при этом считало
+         * конец иначе, через {@code endSecond()}: ось и блоки жили по разным правилам.
+         */
+        @Test
+        void taskCrossingMidnightIsDrawn() throws IOException {
+            List<Task> night = List.of(scheduled("Спать", MONDAY, 22, 40, 32, 0));
+
+            assertThat(hasAccent(read(CalendarRenderer.render(night, MOSCOW, MONDAY, 1))))
+                    .describedAs("блок с 22:40 до полуночи")
+                    .isTrue();
+        }
+
+        @Test
+        void axisReachesMidnightForANightTask() throws IOException {
+            List<Task> night = List.of(scheduled("Спать", MONDAY, 22, 40, 32, 0));
+
+            int normal = read(CalendarRenderer.render(oneMorningTask(), MOSCOW, MONDAY, 1)).getHeight();
+            int stretched = read(CalendarRenderer.render(night, MOSCOW, MONDAY, 1)).getHeight();
+
+            assertThat(stretched).isGreaterThan(normal);
+        }
+
+        /** Ночное дело в недельной сетке — тот же случай, но колонка узкая. */
+        @Test
+        void nightTaskIsDrawnInTheWeekGridToo() throws IOException {
+            List<Task> night = List.of(scheduled("Спать", MONDAY, 22, 40, 32, 0));
+
+            assertThat(hasAccent(read(CalendarRenderer.render(night, MOSCOW, MONDAY, 7)))).isTrue();
+        }
+
+        /**
+         * Дело через полночь продолжается в колонке следующего дня.
+         *
+         * <p>Иначе сон обрывается на полуночи и наутро его нет, хотя человек спит. Так же рисуют все
+         * календари: одно дело, два куска в соседних колонках.
+         */
+        @Test
+        void nightTaskContinuesIntoTheNextColumn() throws IOException {
+            List<Task> night = List.of(scheduled("Спать", MONDAY, 22, 40, 32, 0));
+
+            BufferedImage image = read(CalendarRenderer.render(night, MOSCOW, MONDAY, 7));
+
+            assertThat(accentClusters(image))
+                    .describedAs("вечер понедельника и утро вторника — два куска")
+                    .isEqualTo(2);
+        }
+
         /** Ось растягивается под данные: дело в 22:00 иначе просто не попало бы на картинку. */
         @Test
         void lateTaskStretchesTheTimeAxis() throws IOException {
@@ -231,6 +283,29 @@ class CalendarRendererTest {
             }
         }
         return seen.size();
+    }
+
+    /**
+     * Сколько отдельных вертикальных полос акцентного цвета на картинке.
+     *
+     * <p>Считает столбцы пикселей, а не координаты колонок: тест не должен знать про отступы и
+     * ширину ячейки, иначе он сломается от косметической правки вёрстки.
+     */
+    private static int accentClusters(BufferedImage image) {
+        int accent = CalendarRenderer.ACCENT.getRGB();
+        int clusters = 0;
+        boolean inside = false;
+        for (int x = 0; x < image.getWidth(); x++) {
+            boolean has = false;
+            for (int y = 0; y < image.getHeight() && !has; y++) {
+                has = image.getRGB(x, y) == accent;
+            }
+            if (has && !inside) {
+                clusters++;
+            }
+            inside = has;
+        }
+        return clusters;
     }
 
     /** Дела рисуются заливкой акцентного цвета — по нему и видно, что они на картинке есть. */
