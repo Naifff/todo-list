@@ -7,7 +7,7 @@ import com.familytodo.adapter.telegram.CallbackHandler;
 import com.familytodo.adapter.telegram.DialogHandler;
 import com.familytodo.adapter.telegram.DialogState;
 import com.familytodo.adapter.telegram.DialogStateStore;
-import com.familytodo.adapter.telegram.DueDateParser;
+import com.familytodo.application.DueDateParser;
 import com.familytodo.adapter.telegram.TaskRef;
 import com.familytodo.adapter.telegram.view.TaskCardView;
 import com.familytodo.adapter.telegram.view.TaskEditView;

@@ -1,4 +1,4 @@
-package com.familytodo.adapter.telegram;
+package com.familytodo.application;
 
 import java.time.Clock;
 import java.time.DayOfWeek;
@@ -11,15 +11,16 @@ import java.time.ZonedDateTime;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.springframework.stereotype.Component;
 
 /**
  * Разбор сроков и правила времени.
  *
+ * <p>Живёт в слое юзкейсов, а не в адаптере бота: тихие часы и время по умолчанию —
+ * это политика продукта, и на неё опирается ещё и планировщик напоминаний.
+ *
  * <p>Всё считается в таймзоне семьи и хранится моментом. Часы приходят бином: {@code Instant.now()}
  * в коде означал бы, что границу суток и переход на летнее время проверить нечем.
  */
-@Component
 public class DueDateParser {
 
     /**

@@ -1,4 +1,4 @@
-package com.familytodo.adapter.telegram;
+package com.familytodo.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

@@ -28,4 +28,7 @@ public interface Notifier {
 
     /** Задачу переназначили на другого — прежнему исполнителю. */
     void taskUnassigned(Member recipient, Task task);
+
+    /** Наступил срок. */
+    void taskDue(Member recipient, Task task);
 }

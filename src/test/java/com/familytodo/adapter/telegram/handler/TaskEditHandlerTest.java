@@ -9,7 +9,7 @@ import com.familytodo.adapter.telegram.BotRequest;
 import com.familytodo.adapter.telegram.BotSender;
 import com.familytodo.adapter.telegram.CallbackData;
 import com.familytodo.adapter.telegram.DialogStateStore;
-import com.familytodo.adapter.telegram.DueDateParser;
+import com.familytodo.application.DueDateParser;
 import com.familytodo.adapter.telegram.TaskRef;
 import com.familytodo.adapter.telegram.view.TaskEditView;
 import com.familytodo.adapter.telegram.view.TaskListView;

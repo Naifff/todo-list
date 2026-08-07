@@ -8,7 +8,7 @@ import com.familytodo.adapter.telegram.BotSender;
 import com.familytodo.adapter.telegram.CallbackData;
 import com.familytodo.adapter.telegram.DialogState;
 import com.familytodo.adapter.telegram.DialogStateStore;
-import com.familytodo.adapter.telegram.DueDateParser;
+import com.familytodo.application.DueDateParser;
 import com.familytodo.adapter.telegram.keyboard.NewTaskKeyboards;
 import com.familytodo.adapter.telegram.view.Texts;
 import com.familytodo.application.FamilyService;

@@ -17,7 +17,8 @@ public final class FakeNotifier implements Notifier {
         DECLINED,
         REOPENED,
         CANCELLED,
-        UNASSIGNED
+        UNASSIGNED,
+        DUE
     }
 
     private final List<Sent> sent = new ArrayList<>();
@@ -50,6 +51,11 @@ public final class FakeNotifier implements Notifier {
     @Override
     public void taskUnassigned(Member recipient, Task task) {
         sent.add(new Sent(Kind.UNASSIGNED, recipient.id(), task.id(), null));
+    }
+
+    @Override
+    public void taskDue(Member recipient, Task task) {
+        sent.add(new Sent(Kind.DUE, recipient.id(), task.id(), null));
     }
 
     public List<Sent> sent() {

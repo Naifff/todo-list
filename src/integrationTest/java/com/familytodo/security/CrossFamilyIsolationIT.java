@@ -188,5 +188,8 @@ class CrossFamilyIsolationIT extends AbstractSqliteIT {
 
         @Override
         public void taskUnassigned(Member recipient, Task task) {}
+
+        @Override
+        public void taskDue(Member recipient, Task task) {}
     }
 }

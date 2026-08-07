@@ -67,6 +67,11 @@ public class TelegramNotifier implements Notifier {
         send(recipient, "С тебя сняли: " + title(task));
     }
 
+    @Override
+    public void taskDue(Member recipient, Task task) {
+        send(recipient, "Срок подошёл: " + title(task));
+    }
+
     private void send(Member recipient, String html) {
         if (!recipient.isReachable()) {
             return;
