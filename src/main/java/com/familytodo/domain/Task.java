@@ -141,6 +141,20 @@ public final class Task {
         dueAt = newDueAt;
     }
 
+    /**
+     * Передать дело другому. Право то же, что на правку: просьбу переадресует тот, кто её высказал.
+     *
+     * @return прежний исполнитель — ему нужно сообщить, что с него сняли
+     */
+    public Assignee reassign(Actor actor, Assignee newAssignee) {
+        requireEditor(actor);
+        requireOpen();
+
+        Assignee previous = assignee;
+        assignee = requireAssignee(newAssignee);
+        return previous;
+    }
+
     /** Удаление стирает строку, поэтому домен только проверяет право — состояние не важно. */
     public void assertDeletableBy(Actor actor) {
         requireEditor(actor);

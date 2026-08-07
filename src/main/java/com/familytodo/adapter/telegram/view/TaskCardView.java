@@ -71,6 +71,12 @@ public final class TaskCardView {
         if (!actions.isEmpty()) {
             builder.keyboardRow(actions);
         }
+        if (task.mayModify(actor)) {
+            builder.keyboardRow(
+                    new InlineKeyboardRow(
+                            editButton("Изменить", TaskEditView.MENU, argument),
+                            editButton("Удалить", TaskEditView.DELETE, argument)));
+        }
         builder.keyboardRow(
                 new InlineKeyboardRow(
                         button("← Назад", BACK, String.valueOf(TaskRef.letter(kind)))));
@@ -81,6 +87,13 @@ public final class TaskCardView {
         return InlineKeyboardButton.builder()
                 .text(label)
                 .callbackData(new CallbackData(PREFIX, action, argument).serialize())
+                .build();
+    }
+
+    private static InlineKeyboardButton editButton(String label, String action, String argument) {
+        return InlineKeyboardButton.builder()
+                .text(label)
+                .callbackData(new CallbackData(TaskEditView.PREFIX, action, argument).serialize())
                 .build();
     }
 

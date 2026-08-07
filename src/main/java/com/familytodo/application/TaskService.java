@@ -96,6 +96,26 @@ public class TaskService {
         return tasks.save(task);
     }
 
+    /**
+     * Смена исполнителя. Уведомляются обе стороны: новый — что на нём дело, прежний — что с него
+     * сняли. Молча переложить просьбу на другого нельзя, иначе первый продолжит её держать в голове.
+     */
+    public Task reassign(Member actor, long taskId, long newAssigneeId) {
+        Task task = load(actor, taskId);
+        Member newAssignee = requireActiveMember(actor.familyId(), newAssigneeId);
+
+        Assignee previous =
+                task.reassign(
+                        actor.asActor(), new Assignee(newAssignee.id(), newAssignee.role()));
+        Task saved = tasks.save(task);
+
+        if (previous.memberId() != newAssignee.id()) {
+            notifyMember(actor, previous.memberId(), r -> notifier.taskUnassigned(r, saved));
+            notifyMember(actor, newAssignee.id(), r -> notifier.taskAssigned(r, saved));
+        }
+        return saved;
+    }
+
     public void delete(Member actor, long taskId) {
         Task task = load(actor, taskId);
         task.assertDeletableBy(actor.asActor());

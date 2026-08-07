@@ -33,4 +33,22 @@ public sealed interface DialogState {
      */
     record AwaitingDeclineReason(long taskId, com.familytodo.adapter.telegram.view.TaskListView.Kind kind)
             implements DialogState {}
+
+    /** Правка: ждём новое название текстом. */
+    record AwaitingNewTitle(long taskId, com.familytodo.adapter.telegram.view.TaskListView.Kind kind)
+            implements DialogState {}
+
+    /**
+     * Правка срока или исполнителя: выбор придёт кнопкой.
+     *
+     * <p>Какую задачу правим, приходится держать здесь: формат {@code prefix:action:argument} даёт
+     * ровно одно поле, а нужно и id задачи, и выбранное значение.
+     */
+    record EditingTask(long taskId, com.familytodo.adapter.telegram.view.TaskListView.Kind kind)
+            implements DialogState {}
+
+    /** Правка: выбрали «Своя дата» — ждём её текстом. */
+    record AwaitingNewCustomDue(
+            long taskId, com.familytodo.adapter.telegram.view.TaskListView.Kind kind)
+            implements DialogState {}
 }

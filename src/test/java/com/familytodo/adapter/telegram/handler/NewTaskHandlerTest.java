@@ -323,14 +323,16 @@ class NewTaskHandlerTest {
         }
 
         @Override
-        public void send(long chatId, String html) {
+        public boolean send(long chatId, String html) {
             texts.add(html);
+            return true;
         }
 
         @Override
-        public void send(long chatId, String html, InlineKeyboardMarkup markup) {
+        public boolean send(long chatId, String html, InlineKeyboardMarkup markup) {
             texts.add(html);
             markups.add(markup);
+            return true;
         }
 
         void clear() {
