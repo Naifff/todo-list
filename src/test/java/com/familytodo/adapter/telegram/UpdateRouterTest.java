@@ -1,6 +1,7 @@
 package com.familytodo.adapter.telegram;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -63,6 +64,61 @@ class UpdateRouterTest {
         dialog = new RecordingDialogHandler();
     }
 
+    /**
+     * ⚠️ Обработчики раскладываются по map, и совпавший ключ молча вытеснил бы предыдущий: команда
+     * или целый экран переставали бы работать без единой строки в журнале и без ошибки сборки.
+     * Проверка стоит копейки, а находка — только по жалобе «кнопка ничего не делает».
+     */
+    @Nested
+    class ClashingHandlers {
+
+        @Test
+        void twoHandlersOnTheSameCallbackPrefixRefuseToStart() {
+            assertThatThrownBy(
+                            () ->
+                                    new UpdateRouter(
+                                            members,
+                                            new BotSender(client),
+                                            List.of(),
+                                            List.of(taskCallbacks, new SamePrefixHandler()),
+                                            List.of()))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        void twoHandlersOnTheSameCommandRefuseToStart() {
+            assertThatThrownBy(
+                            () ->
+                                    new UpdateRouter(
+                                            members,
+                                            new BotSender(client),
+                                            List.of(myCommand, new SameCommandHandler()),
+                                            List.of(),
+                                            List.of()))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        private final class SamePrefixHandler implements CallbackHandler {
+            @Override
+            public String prefix() {
+                return taskCallbacks.prefix();
+            }
+
+            @Override
+            public void handle(BotRequest request, CallbackData data) {}
+        }
+
+        private final class SameCommandHandler implements CommandHandler {
+            @Override
+            public java.util.Set<String> commands() {
+                return myCommand.commands();
+            }
+
+            @Override
+            public void handle(BotRequest request) {}
+        }
+    }
+
     private UpdateRouter router() {
         return new UpdateRouter(
                 members,
@@ -112,6 +168,7 @@ class UpdateRouterTest {
                             Role.PARENT,
                             MemberStatus.REMOVED,
                             false,
+                            com.familytodo.domain.MemberColor.BLUE,
                             NOW));
 
             router().route(message(MEMBER_TELEGRAM_ID, "/my"));

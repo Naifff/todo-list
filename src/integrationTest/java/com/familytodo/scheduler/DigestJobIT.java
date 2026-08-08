@@ -361,6 +361,7 @@ class DigestJobIT extends AbstractSqliteIT {
                                 Role.PARENT,
                                 com.familytodo.domain.MemberStatus.ACTIVE,
                                 false,
+                                com.familytodo.domain.MemberColor.BLUE,
                                 YESTERDAY_NOON)
                         .asActor(),
                 LocalTime.of(2, 30));
@@ -421,6 +422,7 @@ class DigestJobIT extends AbstractSqliteIT {
                         Role.PARENT,
                         com.familytodo.domain.MemberStatus.ACTIVE,
                         false,
+                        com.familytodo.domain.MemberColor.BLUE,
                         YESTERDAY_NOON)
                 .asActor();
     }

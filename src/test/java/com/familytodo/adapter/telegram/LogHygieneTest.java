@@ -11,9 +11,11 @@ import ch.qos.logback.classic.spi.StackTraceElementProxy;
 import ch.qos.logback.core.read.ListAppender;
 import com.familytodo.adapter.telegram.handler.FamilyHandler;
 import com.familytodo.adapter.telegram.handler.NewTaskHandler;
+import com.familytodo.adapter.telegram.handler.ShoppingHandler;
 import com.familytodo.adapter.telegram.handler.TaskActionHandler;
 import com.familytodo.adapter.telegram.keyboard.NewTaskKeyboards;
 import com.familytodo.adapter.telegram.view.FamilyView;
+import com.familytodo.adapter.telegram.view.ShoppingView;
 import com.familytodo.adapter.telegram.view.TaskCardView;
 import com.familytodo.adapter.telegram.view.TaskListPresenter;
 import com.familytodo.adapter.telegram.view.TaskListView;
@@ -22,16 +24,19 @@ import com.familytodo.application.FamilyService;
 import com.familytodo.application.TaskQuery;
 import com.familytodo.application.InviteService;
 import com.familytodo.application.SeriesService;
+import com.familytodo.application.ShoppingService;
 import com.familytodo.application.TaskService;
 import com.familytodo.application.fake.FakeNotifier;
 import com.familytodo.application.fake.InMemoryFamilyRepository;
 import com.familytodo.application.fake.InMemoryInviteRepository;
 import com.familytodo.application.fake.InMemoryMemberRepository;
+import com.familytodo.application.fake.InMemoryShoppingRepository;
 import com.familytodo.application.fake.InMemoryTaskRepository;
 import com.familytodo.application.fake.InMemoryTaskSeriesRepository;
 import com.familytodo.domain.InviteCodeGenerator;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Role;
+import com.familytodo.domain.ShoppingList;
 import com.familytodo.domain.Task;
 import java.time.Clock;
 import java.time.Instant;
@@ -69,8 +74,11 @@ class LogHygieneTest {
     private static final String KID_NAME = "СЕКРЕТНОЕ-ИМЯ-РЕБЁНКА";
     private static final String FAMILY_NAME = "СЕКРЕТНАЯ-ФАМИЛИЯ";
 
+    /** Что человек покупает — такие же личные сведения, как и что он должен сделать. */
+    private static final String GROCERY = "СЕКРЕТНАЯ-ПОКУПКА";
+
     private static final List<String> SECRETS =
-            List.of(TITLE, REASON, MOM_NAME, KID_NAME, FAMILY_NAME);
+            List.of(TITLE, REASON, MOM_NAME, KID_NAME, FAMILY_NAME, GROCERY);
 
     private final InMemoryFamilyRepository families = new InMemoryFamilyRepository();
     private final InMemoryMemberRepository members = new InMemoryMemberRepository();
@@ -87,6 +95,7 @@ class LogHygieneTest {
     private Level originalLevel;
 
     private FamilyService familyService;
+    private ShoppingHandler shopping;
     private TaskService taskService;
     private NewTaskHandler newTask;
     private TaskActionHandler actions;
@@ -98,6 +107,11 @@ class LogHygieneTest {
     @BeforeEach
     void setUp() {
         familyService = new FamilyService(families, members, tasks, notifier, clock);
+        shopping =
+                new ShoppingHandler(
+                        new ShoppingService(new InMemoryShoppingRepository(), clock),
+                        sender,
+                        dialogs);
         taskService = new TaskService(tasks, members, notifier, clock);
         newTask =
                 new NewTaskHandler(
@@ -120,6 +134,7 @@ class LogHygieneTest {
                         familyService,
                         new InviteService(invites, members, new InviteCodeGenerator(), clock),
                         sender,
+                        dialogs,
                         BotSettings.of("1:test-token", "FamilyTODO_bot"));
 
         mom = familyService.createFamily(100000001L, 100000001L, MOM_NAME, FAMILY_NAME, MOSCOW);
@@ -171,6 +186,32 @@ class LogHygieneTest {
 
         actions.handle(callback(kid), action(TaskCardView.DECLINE, task.id()));
         actions.continueDialog(text(kid, REASON));
+
+        assertThat(captured()).isNotEmpty();
+        assertNothingLeaked();
+    }
+
+    @Test
+    void fillingTheShoppingListLogsNoTitles() {
+        shopping.handle(
+                callback(mom),
+                new CallbackData(ShoppingView.PREFIX, ShoppingView.ADD, ShoppingList.FOOD.name()));
+        shopping.continueDialog(text(mom, GROCERY + "\n" + GROCERY + "-второе"));
+
+        assertThat(captured()).isNotEmpty();
+        assertNothingLeaked();
+    }
+
+    /**
+     * Отвергнутая позиция — самый вероятный путь утечки: текст человека лежит в причине ошибки, а
+     * не в шаблоне сообщения.
+     */
+    @Test
+    void aRejectedShoppingItemLeaksNeitherTheTextNorTheReason() {
+        shopping.handle(
+                callback(mom),
+                new CallbackData(ShoppingView.PREFIX, ShoppingView.ADD, ShoppingList.FOOD.name()));
+        shopping.continueDialog(text(mom, GROCERY.repeat(20)));
 
         assertThat(captured()).isNotEmpty();
         assertNothingLeaked();

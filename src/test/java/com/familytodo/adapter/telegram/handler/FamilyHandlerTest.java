@@ -72,6 +72,7 @@ class FamilyHandlerTest {
                 familyService,
                 inviteService,
                 sender,
+                new com.familytodo.adapter.telegram.DialogStateStore(),
                 BotSettings.of("1:test-token", "FamilyTODO_bot"));
 
         mom = familyService.createFamily(100000001L, 100000001L, "Мама", "Румянцевы", MOSCOW);

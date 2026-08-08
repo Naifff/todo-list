@@ -23,10 +23,48 @@ public final class Texts {
 
     public static final String ALREADY_CLOSED = "Задача уже закрыта.";
 
+    // --- списки покупок ---
+
+    public static final String SHOP_FOOD_HEADER = "🍎 <b>Продукты</b>";
+
+    public static final String SHOP_HOUSEHOLD_HEADER = "🧴 <b>Хозяйство</b>";
+
+    public static final String SHOP_EMPTY = "Пока пусто.";
+
+    public static final String SHOP_TRUNCATED = "Показаны первые 30 позиций.";
+
+    public static final String SHOP_ADD = "➕ Добавить";
+
+    public static final String SHOP_CLEAR_BOUGHT = "🧹 Убрать купленное";
+
+    public static final String SHOP_ASK_ITEMS =
+            """
+            Что купить? Можно списком — по одной позиции в строке:
+
+            <code>молоко
+            хлеб
+            стиральный порошок</code>""";
+
+    /** Одна фраза на обе причины: пусто и слишком длинно. Разбираться человеку тут не в чем. */
+    public static final String SHOP_ITEM_REJECTED =
+            "Не понял. Одна позиция в строке, до 100 символов, не больше 20 за раз.";
+
+    public static final String SHOP_SWITCH_TO_FOOD = "🍎 Продукты";
+
+    public static final String SHOP_SWITCH_TO_HOUSEHOLD = "🧴 Хозяйство";
+
     // --- онбординг ---
 
     public static final String ASK_FAMILY_NAME =
             "Привет! Похоже, ты здесь впервые.\n\nКак назвать семью?";
+
+    /**
+     * Незнакомцу не сообщается ничего лишнего: ни сколько семей уже есть, ни как попросить доступ у
+     * владельца бота. Ответ одинаков и для случайно забредшего, и для того, кому ссылку забыли
+     * прислать.
+     */
+    public static final String FAMILY_CREATION_CLOSED =
+            "Чтобы пользоваться ботом, нужна ссылка-приглашение от члена семьи.";
 
     public static final String FAMILY_NAME_TOO_LONG =
             "Слишком длинно. Давай покороче — до 60 символов.";
@@ -51,6 +89,7 @@ public final class Texts {
 
             /new — попросить кого-то о деле
             /agenda — расписание на день, 3 дня, неделю, месяц
+            /shop — списки покупок: продукты и хозяйство
             /my — что просили у меня
             /assigned — что я попросил у других
             /all — все дела семьи (только для родителей)
@@ -134,6 +173,18 @@ public final class Texts {
     public static final String NOBODY_TO_REMOVE = "Кроме тебя в семье никого нет.";
 
     public static final String ASK_WHO_TO_REMOVE = "Кого исключить?";
+
+    public static final String PROFILE_IS_FOR_PARENTS = "Имя и цвет меняют только родители.";
+
+    public static final String ASK_WHOSE_PROFILE = "Кого правим?";
+
+    public static final String PROFILE_HEADER = "Имя показывается в списках и в расписании, цвет — в расписании.";
+
+    public static final String ASK_NEW_MEMBER_NAME = "Как записать этого человека?";
+
+    public static final String MEMBER_NAME_REJECTED = "Не понял. Имя не пустое и до 40 символов.";
+
+    public static final String ASK_COLOR = "Каким цветом рисовать его дела?";
 
     public static final String REMOVED_NOTICE = "Исключён";
 

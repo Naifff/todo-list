@@ -65,7 +65,60 @@ class StartHandlerTest {
         inviteService =
                 new InviteService(invites, members, new InviteCodeGenerator(), clock);
         handler =
-                new StartHandler(familyService, inviteService, members, dialogs, sender);
+                new StartHandler(familyService, inviteService, members, dialogs, sender, true);
+    }
+
+    /**
+     * Создание новых семей выключено.
+     *
+     * <p>Приглашения при этом обязаны работать: закрыта регистрация, а не вход. Иначе выключатель
+     * отрезал бы от бота и тех, кому ссылку уже прислали.
+     */
+    @Nested
+    class WhenFamilyCreationIsClosed {
+
+        private StartHandler closed;
+
+        @BeforeEach
+        void closeRegistration() {
+            closed =
+                    new StartHandler(
+                            familyService, inviteService, members, dialogs, sender, false);
+        }
+
+        @Test
+        void newcomerWithoutAnInviteIsToldToAskForALink() {
+            closed.handle(start(NEWCOMER, null, Optional.empty()));
+
+            assertThat(sender.texts).containsExactly(Texts.FAMILY_CREATION_CLOSED);
+        }
+
+        /** Ни одной семьи не появилось и никого ни о чём не спросили. */
+        @Test
+        void newcomerWithoutAnInviteStartsNoDialogAndNoFamily() {
+            closed.handle(start(NEWCOMER, null, Optional.empty()));
+
+            assertThat(dialogs.get(NEWCOMER)).isEmpty();
+            assertThat(families.findAll()).isEmpty();
+        }
+
+        /** Свободный текст после отказа тоже ничего не создаёт: диалога нет, отвечать нечему. */
+        @Test
+        void typingAfterTheRefusalCreatesNothing() {
+            closed.handle(start(NEWCOMER, null, Optional.empty()));
+
+            assertThat(closed.continueDialog(text(NEWCOMER, "Ивановы"))).isFalse();
+            assertThat(families.findAll()).isEmpty();
+        }
+
+        @Test
+        void anInviteStillLetsSomeoneIn() {
+            String code = inviteService.issue(founder(), Role.CHILD).code();
+
+            closed.handle(start(NEWCOMER, null, Optional.of("inv_" + code)));
+
+            assertThat(members.findByTelegramUserId(NEWCOMER)).isPresent();
+        }
     }
 
     @Nested

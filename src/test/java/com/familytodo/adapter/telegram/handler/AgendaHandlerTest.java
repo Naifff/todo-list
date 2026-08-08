@@ -262,92 +262,218 @@ class AgendaHandlerTest {
     }
 
 
+    /**
+     * Второй вид: страница файлом.
+     *
+     * <p>Картинка обзорнее, страница подробнее — и живут они рядом, пока новый вид не обкатан на
+     * настоящих телефонах.
+     */
     @Nested
-    class Picture {
+    class Page {
 
         @Test
-        void pictureButtonSendsAPhotoNotAMessage() {
+        void pageButtonSendsADocumentNotAPhotoAndNotAMessage() {
             task("Сегодняшнее", "2026-08-07T16:00:00Z");
             sender.clear();
 
-            handler.handle(callback(mom), picture(1));
+            handler.handle(callback(mom), page(1));
 
-            assertThat(sender.photos).hasSize(1);
+            assertThat(sender.documents).hasSize(1);
             assertThat(sender.texts).isEmpty();
-            assertThat(sender.photos.getFirst().png()).isNotEmpty();
+            assertThat(sender.documents.getFirst().png()).isNotEmpty();
         }
 
-        /** Картинка — вложение, у неё должно быть имя файла с расширением. */
+        /** Имя латиницей и с датой: файл ляжет в «Загрузки» рядом с прошлыми. */
         @Test
-        void photoIsNamedAsAPng() {
-            handler.handle(callback(mom), picture(7));
+        void documentIsNamedAsAnHtmlFileWithTheDate() {
+            handler.handle(callback(mom), page(7));
 
-            assertThat(sender.photos.getFirst().fileName()).endsWith(".png");
+            assertThat(sender.documents.getFirst().fileName())
+                    .endsWith(".html")
+                    .contains("2026-08-07")
+                    .matches("[A-Za-z0-9.\\-]+");
+        }
+
+        @Test
+        void theDocumentIsTheRenderedSchedule() {
+            task("Сегодняшнее", "2026-08-07T16:00:00Z");
+            sender.clear();
+
+            handler.handle(callback(mom), page(1));
+
+            String html =
+                    new String(
+                            sender.documents.getFirst().png(),
+                            java.nio.charset.StandardCharsets.UTF_8);
+            assertThat(html).startsWith("<!doctype html>").contains("Сегодняшнее");
+        }
+
+        /**
+         * ⚠️ В файле ровно столько дней, сколько попросили.
+         *
+         * <p>Тесты до этого спрашивали «файл пришёл?», а не «что в нём»: неделя сеткой приезжала
+         * одним днём, и ни один из них этого не замечал.
+         */
+        @Test
+        void theDocumentCoversTheRequestedNumberOfDays() {
+            for (int days : List.of(1, 3, 7)) {
+                sender.clear();
+                handler.handle(callback(mom), page(days));
+
+                String html =
+                        new String(
+                                sender.documents.getFirst().png(),
+                                java.nio.charset.StandardCharsets.UTF_8);
+                assertThat(countOf(html, "class=\"col\""))
+                        .describedAs("дней в сетке при горизонте %s", days)
+                        .isEqualTo(days);
+            }
+        }
+
+        /**
+         * ⚠️ Горизонт входит в имя файла.
+         *
+         * <p>Без него день и неделя приезжают под одним именем, и телефон открывает ранее
+         * скачанный файл вместо нового. Снаружи это выглядит как «неделя присылает день», причём
+         * сервер при этом отдаёт правильный файл — поэтому ни один тест содержимого не помогал.
+         */
+        @Test
+        void everyHorizonGetsItsOwnFileName() {
+            List<String> names = new ArrayList<>();
+            for (int days : AgendaView.HORIZONS) {
+                sender.clear();
+                handler.handle(callback(mom), page(days));
+                names.add(sender.documents.getFirst().fileName());
+            }
+
+            assertThat(names).doesNotHaveDuplicates();
         }
 
         @Test
         void captionNamesTheHorizon() {
-            handler.handle(callback(mom), picture(7));
+            handler.handle(callback(mom), page(7));
 
-            assertThat(sender.photos.getFirst().caption()).contains("неделя");
+            assertThat(sender.documents.getFirst().caption()).contains("неделя");
         }
 
-        /**
-         * Дел без даты на календаре нет — им негде быть на оси времени. Молча их потерять нельзя:
-         * человек решит, что список пуст.
-         */
-        @Test
-        void captionSaysHowManyUndatedTasksAreNotShown() {
-            tasks.create(mom, kid.id(), "Когда-нибудь разобрать гараж", null);
-            tasks.create(mom, kid.id(), "И почистить чердак", null);
-            sender.clear();
-
-            handler.handle(callback(mom), picture(1));
-
-            assertThat(sender.photos.getFirst().caption()).contains("2 дела без даты");
-        }
-
-        @Test
-        void captionSaysNothingAboutUndatedWhenThereAreNone() {
-            task("Сегодняшнее", "2026-08-07T16:00:00Z");
-            sender.clear();
-
-            handler.handle(callback(mom), picture(1));
-
-            assertThat(sender.photos.getFirst().caption()).doesNotContain("без даты");
-        }
-
-        /** Горизонт приходит от клиента и проверяется так же, как у списка. */
+        /** Горизонт приходит от клиента и проверяется так же, как у списка и картинки. */
         @Test
         void forgedHorizonIsRejected() {
-            assertThatThrownBy(() -> handler.handle(callback(mom), picture(365)))
+            assertThatThrownBy(() -> handler.handle(callback(mom), page(365)))
                     .isInstanceOf(IllegalArgumentException.class);
-            assertThat(sender.photos).isEmpty();
+            assertThat(sender.documents).isEmpty();
         }
 
         @Test
         void everyHorizonRenders() {
             for (int days : AgendaView.HORIZONS) {
                 sender.clear();
-                handler.handle(callback(mom), picture(days));
-                assertThat(sender.photos).describedAs("горизонт %d", days).hasSize(1);
+                handler.handle(callback(mom), page(days));
+                assertThat(sender.documents).hasSize(1);
             }
         }
 
+        /** Дела без даты в файл входят — в отличие от картинки, где им негде быть на оси. */
         @Test
-        void keyboardOffersThePictureButton() {
+        void undatedTasksAreInTheFileItself() {
+            tasks.create(mom, kid.id(), "Когда-нибудь разобрать гараж", null);
+            sender.clear();
+
+            handler.handle(callback(mom), page(1));
+
+            String html =
+                    new String(
+                            sender.documents.getFirst().png(),
+                            java.nio.charset.StandardCharsets.UTF_8);
+            assertThat(html).contains("Когда-нибудь разобрать гараж");
+        }
+
+        /** Кнопка есть на экране расписания рядом с картинкой. */
+        @Test
+        void theKeyboardOffersBothViews() {
             handler.handle(command(mom));
 
-            assertThat(labels(sender.markups.getFirst())).contains("Картинкой");
-        }
-
-        private List<String> labels(InlineKeyboardMarkup markup) {
-            return markup.getKeyboard().stream()
-                    .flatMap(row -> row.stream())
-                    .map(button -> button.getText())
-                    .toList();
+            List<String> labels = new ArrayList<>();
+            sender.markups.getFirst()
+                    .getKeyboard()
+                    .forEach(row -> row.forEach(button -> labels.add(button.getText())));
+            assertThat(labels).contains("Сеткой", "Списком");
         }
     }
+
+    /**
+     * Второй вид того же файла — списком. Занял место картинки: у сетки день упирается в ось и её
+     * границы, у списка границ нет вовсе, и выбирает человек.
+     */
+    @Nested
+    class ListPage {
+
+        /**
+         * ⚠️ Кнопки видов несут <b>текущий</b> горизонт.
+         *
+         * <p>Человек переключает на неделю и жмёт «Сеткой» — и получает день, если кнопка осталась
+         * с прежним числом. Снаружи это выглядит как «неделя присылает день».
+         */
+        @Test
+        void theViewButtonsCarryTheHorizonThatIsSelectedNow() {
+            handler.handle(callback(mom), horizon(7));
+
+            List<String> data = new ArrayList<>();
+            sender.markups
+                    .getLast()
+                    .getKeyboard()
+                    .forEach(row -> row.forEach(button -> data.add(button.getCallbackData())));
+
+            assertThat(data)
+                    .contains(
+                            AgendaView.PREFIX + ":" + AgendaView.PAGE + ":7",
+                            AgendaView.PREFIX + ":" + AgendaView.LIST + ":7");
+        }
+
+        @Test
+        void listButtonSendsADocument() {
+            task("Сегодняшнее", "2026-08-07T16:00:00Z");
+            sender.clear();
+
+            handler.handle(callback(mom), list(1));
+
+            assertThat(sender.documents).hasSize(1);
+        }
+
+        @Test
+        void theTwoViewsAreDifferentFilesAndDifferentShapes() {
+            task("Сегодняшнее", "2026-08-07T16:00:00Z");
+            sender.clear();
+
+            handler.handle(callback(mom), page(1));
+            handler.handle(callback(mom), list(1));
+
+            assertThat(sender.documents.get(0).fileName())
+                    .isNotEqualTo(sender.documents.get(1).fileName());
+            assertThat(
+                            new String(
+                                    sender.documents.get(1).png(),
+                                    java.nio.charset.StandardCharsets.UTF_8))
+                    .doesNotContain("class=\"hours\"");
+        }
+
+        @Test
+        void forgedHorizonIsRejected() {
+            assertThatThrownBy(() -> handler.handle(callback(mom), list(365)))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThat(sender.documents).isEmpty();
+        }
+
+        @Test
+        void everyHorizonRenders() {
+            for (int days : AgendaView.HORIZONS) {
+                sender.clear();
+                handler.handle(callback(mom), list(days));
+                assertThat(sender.documents).hasSize(1);
+            }
+        }
+    }
+
 
     // --- вспомогательное ---
 
@@ -355,8 +481,20 @@ class AgendaHandlerTest {
         return tasks.create(mom, kid.id(), title, Instant.parse(dueAt));
     }
 
-    private static CallbackData picture(int days) {
-        return new CallbackData(AgendaView.PREFIX, AgendaView.PICTURE, Integer.toString(days));
+    private static CallbackData list(int days) {
+        return new CallbackData(AgendaView.PREFIX, AgendaView.LIST, Integer.toString(days));
+    }
+
+    private static int countOf(String haystack, String needle) {
+        int count = 0;
+        for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + 1)) {
+            count++;
+        }
+        return count;
+    }
+
+    private static CallbackData page(int days) {
+        return new CallbackData(AgendaView.PREFIX, AgendaView.PAGE, Integer.toString(days));
     }
 
     private static CallbackData horizon(int days) {
@@ -389,7 +527,7 @@ class AgendaHandlerTest {
         private final List<String> texts = new ArrayList<>();
         private final List<String> edits = new ArrayList<>();
         private final List<InlineKeyboardMarkup> markups = new ArrayList<>();
-        private final List<Photo> photos = new ArrayList<>();
+        private final List<Photo> documents = new ArrayList<>();
 
         record Photo(byte[] png, String fileName, String caption) {}
 
@@ -417,8 +555,8 @@ class AgendaHandlerTest {
         }
 
         @Override
-        public boolean sendPhoto(long chatId, byte[] png, String fileName, String caption) {
-            photos.add(new Photo(png, fileName, caption));
+        public boolean sendDocument(long chatId, byte[] bytes, String fileName, String caption) {
+            documents.add(new Photo(bytes, fileName, caption));
             return true;
         }
 
@@ -426,7 +564,7 @@ class AgendaHandlerTest {
             texts.clear();
             edits.clear();
             markups.clear();
-            photos.clear();
+            documents.clear();
         }
     }
 }

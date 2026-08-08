@@ -6,12 +6,15 @@
 
 На сервере работает **чужой VPN**, и он важнее нашего бота.
 
-- **не ставить Docker.** Установка правит политику цепочки `FORWARD` в iptables,
-  на которой держится маршрутизация VPN. Это единственная причина, по которой в
-  проекте нет ни Docker, ни Testcontainers, ни PostgreSQL
+- **не трогать Docker.** Он на машине уже стоит и работает; цепочка `FORWARD` под
+  ним (политика `DROP`, переходы в `DOCKER-USER` и `DOCKER-FORWARD`), и VPN с этим
+  сосуществует. Перебирают цепочку заново переустановка, удаление и
+  `systemctl restart docker` — вместе с правилами соседа. Свой контейнер тут и не
+  нужен: поэтому в проекте нет ни Testcontainers, ни PostgreSQL, а бот едет jar'ом
 - **не трогать** `iptables`, `nftables`, `sysctl`, сетевые интерфейсы, маршруты
 - **не перезагружать** хост без предупреждения владельца VPN
-- не менять глобальные настройки systemd и journald сверх квоты из этого файла
+- не менять глобальные настройки systemd и journald — включая квоту из шага 5,
+  см. предупреждение там
 
 Бот не открывает ни одного порта: long polling — только исходящие соединения.
 Ничего проксировать, пробрасывать и открывать в файрволе не нужно.
@@ -82,9 +85,16 @@ systemctl enable family-todo
 
 Первый запуск — после выкладки jar (шаг 6).
 
-## 5. Квота журнала
+## 5. Квота журнала — только на своей машине
 
 Без ограничения журнал растёт до 10% раздела. На маленьком VPS это заметно.
+
+⚠️ **На `your-server` этот шаг пропускается.** Журнал там занимает 3.9 Гб, и это
+почти целиком логи соседа: квота урежет общий журнал, а не наш, и первый же
+`systemctl restart systemd-journald` удалит чужую историю. Настройка журнала —
+общесистемная, поэтому на общей машине она не наша.
+
+Шаг остаётся для случая, когда машина своя:
 
 ```bash
 mkdir -p /etc/systemd/journald.conf.d
@@ -97,7 +107,8 @@ EOF
 systemctl restart systemd-journald
 ```
 
-Это единственная общесистемная правка во всей установке.
+Это единственная общесистемная правка во всей установке — и единственная, которую
+можно не делать без последствий для бота.
 
 ## 6. Выкладка
 
@@ -122,16 +133,25 @@ cp deploy/backup.sh /usr/local/bin/family-todo-backup
 chmod 755 /usr/local/bin/family-todo-backup
 
 cat > /etc/systemd/system/family-todo-backup.service <<'EOF'
+[Unit]
+Description=Family todo: snapshot of the SQLite database
+After=family-todo.service
+
 [Service]
 Type=oneshot
 User=familytodo
+Group=familytodo
 ExecStart=/usr/local/bin/family-todo-backup
 EOF
 
 cat > /etc/systemd/system/family-todo-backup.timer <<'EOF'
+[Unit]
+Description=Family todo: daily database snapshot
+
 [Timer]
 OnCalendar=daily
 Persistent=true
+RandomizedDelaySec=15m
 
 [Install]
 WantedBy=timers.target
@@ -142,10 +162,17 @@ systemctl enable --now family-todo-backup.timer
 systemctl start family-todo-backup.service   # проверить сразу, а не через сутки
 ```
 
+`Persistent=true` нужен, чтобы копия догналась после простоя машины, а
+`RandomizedDelaySec` разводит её с чужими ночными задачами на общем хосте.
+
 Копия делается через `sqlite3 .backup`, а не `cp`: при включённом WAL часть
 свежих страниц лежит в отдельном файле, и обычная копия может не открыться —
 молча, до первой попытки восстановиться. Скрипт сразу проверяет снимок
 `pragma integrity_check` и удаляет негодный. Хранение — 7 дней.
+
+⚠️ Успешный `systemctl start` ещё ничего не значит: он показывает, что скрипт
+отработал, а не что снимок годен. Проверять разворачиванием — распаковать копию во
+временный файл и спросить у неё `integrity_check` и число строк.
 
 Восстановление:
 

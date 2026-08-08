@@ -50,6 +50,16 @@ public sealed interface DialogState {
     record AwaitingCustomDueDate(String title, long assigneeId) implements DialogState {}
 
     /**
+     * {@code /shop}: нажали «Добавить» — ждём позиции текстом, по строке на позицию.
+     *
+     * <p>Список несём с собой, потому что позиции обязаны попасть туда, откуда нажали кнопку.
+     */
+    record AwaitingShoppingItems(com.familytodo.domain.ShoppingList list) implements DialogState {}
+
+    /** {@code /family}: правим имя участника — ждём его текстом. */
+    record AwaitingMemberName(long memberId) implements DialogState {}
+
+    /**
      * Нажали «Не могу» — ждём причину текстом.
      *
      * <p>Список запоминается, чтобы после отказа вернуть человека туда, откуда он пришёл.
