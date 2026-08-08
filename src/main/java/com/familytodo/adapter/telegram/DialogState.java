@@ -52,11 +52,9 @@ public sealed interface DialogState {
     /**
      * {@code /shop}: нажали «Добавить» — ждём позиции текстом, по строке на позицию.
      *
-     * <p>Список несём с собой, потому что позиции обязаны попасть туда, откуда нажали кнопку. Номер
-     * сообщения — чтобы дописанный список переписал уже показанное сообщение, а не добавил ещё одно.
+     * <p>Список несём с собой, потому что позиции обязаны попасть туда, откуда нажали кнопку.
      */
-    record AwaitingShoppingItems(com.familytodo.domain.ShoppingList list, int messageId)
-            implements DialogState {}
+    record AwaitingShoppingItems(com.familytodo.domain.ShoppingList list) implements DialogState {}
 
     /**
      * Нажали «Не могу» — ждём причину текстом.

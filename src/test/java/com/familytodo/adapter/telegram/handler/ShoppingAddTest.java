@@ -99,16 +99,24 @@ class ShoppingAddTest {
             assertThat(titles(ShoppingList.FOOD)).isEmpty();
         }
 
-        /** Список живёт одним сообщением: после добавления переписывается он, а не шлётся новый. */
+        /**
+         * ⚠️ После добавления список приходит <b>новым сообщением</b>, а не правкой старого.
+         *
+         * <p>Между списком и ответом человека вклиниваются подсказка «что купить» и его собственный
+         * текст, поэтому исходное сообщение уезжает вверх. Правка молча меняла его за экраном:
+         * позиции в базе появлялись, а на экране не происходило ничего — так и выглядела жалоба
+         * «список не заполняется».
+         */
         @Test
-        void theListMessageIsRewrittenRatherThanDuplicated() {
+        void theUpdatedListArrivesAsANewVisibleMessage() {
             handler.handle(callback(mom), addTo(ShoppingList.FOOD));
             sender.clear();
 
             handler.continueDialog(text(mom, "Молоко"));
 
-            assertThat(sender.edits).hasSize(1);
-            assertThat(sender.edits.getFirst()).contains("Молоко");
+            assertThat(sender.texts).describedAs("результат виден там, где смотрит человек").hasSize(1);
+            assertThat(sender.texts.getFirst()).contains("Молоко");
+            assertThat(sender.edits).isEmpty();
         }
 
         @Test
