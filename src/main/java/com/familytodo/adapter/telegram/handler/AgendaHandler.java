@@ -106,7 +106,10 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
         sender.sendDocument(
                 request.chatId(),
                 html,
-                "schedule-" + (asList ? "list-" : "grid-") + today + ".html",
+                // ⚠️ горизонт в имени обязателен: под одним именем телефон открывает ранее
+                // скачанный файл, и неделя показывается вчерашним днём. Сервер при этом отдаёт
+                // правильный документ, поэтому проверка содержимого такое не ловит
+                "schedule-" + (asList ? "list" : "grid") + "-" + days + "d-" + today + ".html",
                 AgendaView.caption(days, 0));
     }
 
