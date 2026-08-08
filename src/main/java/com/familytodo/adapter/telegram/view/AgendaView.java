@@ -29,8 +29,13 @@ public final class AgendaView {
     public static final String PREFIX = "a";
     public static final String DAYS = "days";
 
-    /** Календарь картинкой. Обзорный режим: кнопок на самой картинке нет и быть не может. */
-    public static final String PICTURE = "pic";
+    /**
+     * Расписание списком — тем же HTML-файлом, но без сетки.
+     *
+     * <p>Занял место картинки. У сетки день упирается в ось и её границы, у списка границ нет
+     * вовсе; какой вид удобнее, зависит от дня и от человека, поэтому выбирает он.
+     */
+    public static final String LIST = "list";
 
     /**
      * Расписание страницей — HTML-файлом.
@@ -118,15 +123,15 @@ public final class AgendaView {
         InlineKeyboardRow views = new InlineKeyboardRow();
         views.add(
                 InlineKeyboardButton.builder()
-                        .text("Картинкой")
+                        .text("Сеткой")
                         .callbackData(
-                                new CallbackData(PREFIX, PICTURE, Integer.toString(days)).serialize())
+                                new CallbackData(PREFIX, PAGE, Integer.toString(days)).serialize())
                         .build());
         views.add(
                 InlineKeyboardButton.builder()
-                        .text("Страницей")
+                        .text("Списком")
                         .callbackData(
-                                new CallbackData(PREFIX, PAGE, Integer.toString(days)).serialize())
+                                new CallbackData(PREFIX, LIST, Integer.toString(days)).serialize())
                         .build());
         rows.add(views);
 
