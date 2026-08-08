@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -241,10 +242,122 @@ class CalendarHtmlRendererTest {
 
         /** Пустой день внутри окна не пропадает: иначе непонятно, свободен он или потерялся. */
         @Test
-        void anEmptyDayInsideTheWindowIsStillShown() {
+        void anEmptyDayInsideTheWindowStillGetsItsColumn() {
             String html = render(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 3);
 
-            assertThat(html).contains("01.09").contains("02.09");
+            assertThat(html).contains(">1 Вт<").contains(">2 Ср<");
+        }
+
+        /**
+         * ⚠️ Числа в CSS не зависят от локали машины.
+         *
+         * <p>У формата по умолчанию берётся локаль системы, и в русской «top:8.000%» превращается
+         * в «top:8,000%» — правило, которое браузер молча отбросит, а блоки съедут в угол.
+         */
+        @Test
+        void cssNumbersUseADotWhateverTheMachineLocale() {
+            Locale previous = Locale.getDefault(Locale.Category.FORMAT);
+            try {
+                Locale.setDefault(Locale.Category.FORMAT, Locale.of("ru", "RU"));
+                String html = render(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 1);
+
+                assertThat(html).contains("top:").doesNotContain(",000%");
+            } finally {
+                Locale.setDefault(Locale.Category.FORMAT, previous);
+            }
+        }
+    }
+
+    /**
+     * Сетка по часам — форма из макетов `docs/с*.pdf`: ось времени слева, дни колонками,
+     * пересекающиеся дела рядом.
+     *
+     * <p>Список (`docs/л*.pdf`) уже есть в самом сообщении расписания; файл повторял бы его
+     * другими словами.
+     */
+    @Nested
+    class TimeGrid {
+
+        @Test
+        void everyDayOfTheWindowGetsItsColumn() {
+            String html = render(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 3);
+
+            assertThat(countOf(html, "class=\"col\"")).isEqualTo(3);
+        }
+
+        @Test
+        void theHourAxisIsThere() {
+            String html = render(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 1);
+
+            assertThat(html).contains("class=\"hours\"").contains(">08<").contains(">12<");
+        }
+
+        /** Блок стоит на своём месте по времени, а не просто идёт следом за предыдущим. */
+        @Test
+        void aBlockIsPositionedByItsTime() {
+            String html = render(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 1);
+
+            assertThat(html).containsPattern("class=\"block[^\"]*\" style=\"[^\"]*top:[^\"]*height:");
+        }
+
+        /** Пересекающиеся дела встают рядом, а не друг на друга — это и делает {@code Lanes}. */
+        @Test
+        void overlappingTasksSitSideBySide() {
+            String html =
+                    render(
+                            List.of(
+                                    scheduled("Линейка", MONDAY, 8, 0, 10, 0),
+                                    scheduled("Отвезти", MONDAY, 8, 0, 8, 40)),
+                            List.of(),
+                            1);
+
+            assertThat(countOf(html, "left:0.000%")).isEqualTo(1);
+            assertThat(html).contains("left:50.000%");
+        }
+
+        /**
+         * ⚠️ Ось растягивается под дело за её пределами.
+         *
+         * <p>Ровно здесь картинка однажды теряла ночное дело целиком: границы оси считались не теми
+         * величинами, которыми потом рисовались блоки.
+         */
+        @Test
+        void theAxisStretchesToCoverATaskOutsideTheDefaultHours() {
+            String html = render(List.of(scheduled("Рано", MONDAY, 5, 0, 6, 0)), List.of(), 1);
+
+            assertThat(html).contains(">05<").contains("Рано");
+        }
+
+        /** Широкая сетка листается внутри себя, а не растягивает страницу. */
+        @Test
+        void aWideGridScrollsInsideItsOwnContainer() {
+            assertThat(render(List.of(), List.of(), 7)).contains("overflow-x: auto");
+        }
+    }
+
+    /** Тридцать дней — месячная сетка, как `docs/с30.pdf`: недели строками, а не ось на месяц. */
+    @Nested
+    class MonthGrid {
+
+        @Test
+        void aMonthUsesWeekRowsInsteadOfAnHourAxis() {
+            String html = render(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 30);
+
+            assertThat(html).contains("class=\"month\"").doesNotContain("class=\"hours\"");
+        }
+
+        @Test
+        void aMonthCellCarriesTheTimeBesideTheTitle() {
+            String html = render(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 30);
+
+            assertThat(html).contains("08:00").contains("Школа");
+        }
+
+        @Test
+        void weekdayHeadersAreThere() {
+            String html = render(List.of(), List.of(), 30);
+
+            assertThat(html).contains("Пн").contains("Вс");
         }
     }
 
