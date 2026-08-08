@@ -2,6 +2,7 @@ package com.familytodo.adapter.persistence;
 
 import com.familytodo.application.port.MemberRepository;
 import com.familytodo.domain.Member;
+import com.familytodo.domain.MemberColor;
 import com.familytodo.domain.MemberStatus;
 import com.familytodo.domain.Role;
 import java.sql.ResultSet;
@@ -20,21 +21,22 @@ public class JdbcMemberRepository implements MemberRepository {
     private static final String SELECT =
             """
             select id, family_id, telegram_user_id, private_chat_id,
-                   display_name, role, status, blocked_bot, created_at
+                   display_name, role, status, blocked_bot, color, created_at
             from member
             """;
 
     private static final String UPSERT =
             """
             insert into member (id, family_id, telegram_user_id, private_chat_id,
-                                display_name, role, status, blocked_bot, created_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                display_name, role, status, blocked_bot, color, created_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict (id) do update set
                 private_chat_id = excluded.private_chat_id,
                 display_name    = excluded.display_name,
                 role            = excluded.role,
                 status          = excluded.status,
-                blocked_bot     = excluded.blocked_bot
+                blocked_bot     = excluded.blocked_bot,
+                color           = excluded.color
             """;
 
     private final JdbcClient jdbc;
@@ -62,6 +64,7 @@ public class JdbcMemberRepository implements MemberRepository {
                         member.role().name(),
                         member.status().name(),
                         member.blockedBot() ? 1 : 0,
+                        member.color().name(),
                         Instants.write(member.createdAt()))
                 .update();
         return member;
@@ -103,6 +106,13 @@ public class JdbcMemberRepository implements MemberRepository {
                 Role.valueOf(rs.getString("role")),
                 MemberStatus.valueOf(rs.getString("status")),
                 rs.getInt("blocked_bot") != 0,
+                // строка была заведена до V6 и почему-то осталась без цвета — берём тот же
+                // цвет по номеру, что и раздала бы миграция
+                color(rs.getString("color"), rs.getLong("id")),
                 Instants.read(rs, "created_at"));
+    }
+
+    private static MemberColor color(String stored, long memberId) {
+        return stored == null ? MemberColor.forMember(memberId) : MemberColor.valueOf(stored);
     }
 }

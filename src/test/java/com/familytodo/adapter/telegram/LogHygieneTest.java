@@ -134,6 +134,7 @@ class LogHygieneTest {
                         familyService,
                         new InviteService(invites, members, new InviteCodeGenerator(), clock),
                         sender,
+                        dialogs,
                         BotSettings.of("1:test-token", "FamilyTODO_bot"));
 
         mom = familyService.createFamily(100000001L, 100000001L, MOM_NAME, FAMILY_NAME, MOSCOW);

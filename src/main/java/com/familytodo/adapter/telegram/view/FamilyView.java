@@ -3,6 +3,7 @@ package com.familytodo.adapter.telegram.view;
 import com.familytodo.adapter.telegram.CallbackData;
 import com.familytodo.domain.Family;
 import com.familytodo.domain.Member;
+import com.familytodo.domain.MemberColor;
 import com.familytodo.domain.Role;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +27,17 @@ public final class FamilyView {
     /** На сколько дней вперёд собирать утренний список. */
     public static final String HORIZON = "horiz";
 
+    /** Правка профиля участника: имя и цвет. */
+    public static final String PROFILE = "who";
+
+    public static final String PROFILE_PICK = "whopick";
+
+    public static final String RENAME = "rename";
+
+    public static final String COLORS = "colors";
+
+    public static final String COLOR = "color";
+
     /** Часы, из которых выбирается дайджест. Ночь и день не предлагаем — это утреннее письмо. */
     public static final List<Integer> DIGEST_HOURS = List.of(6, 7, 8, 9, 10, 11);
 
@@ -38,7 +50,7 @@ public final class FamilyView {
         out.append("Дайджест: ").append(family.digestTime()).append("\n\n");
 
         for (Member member : members) {
-            out.append(member.role() == Role.PARENT ? "👤 " : "🧒 ");
+            out.append(dot(member.color())).append(' ');
             out.append(HtmlEscaper.escape(member.displayName()));
             out.append(member.role() == Role.PARENT ? " — родитель" : " — ребёнок");
             out.append('\n');
@@ -57,9 +69,65 @@ public final class FamilyView {
                                 button("Позвать взрослого", INVITE, "parent")))
                 .keyboardRow(
                         new InlineKeyboardRow(
-                                button("Исключить", REMOVE, "0"),
-                                button("Настройки", SETTINGS, "0")))
+                                button("Имя и цвет", PROFILE, "0"),
+                                button("Исключить", REMOVE, "0")))
+                .keyboardRow(new InlineKeyboardRow(button("Настройки", SETTINGS, "0")))
                 .build();
+    }
+
+    /** Что можно сделать с выбранным участником. */
+    public static InlineKeyboardMarkup profile(Member target) {
+        return InlineKeyboardMarkup.builder()
+                .keyboardRow(
+                        new InlineKeyboardRow(
+                                button("Переименовать", RENAME, Long.toString(target.id())),
+                                button("Цвет", COLORS, Long.toString(target.id()))))
+                .keyboardRow(new InlineKeyboardRow(button("← Назад", MENU, "0")))
+                .build();
+    }
+
+    /**
+     * Палитра. Аргумент кнопки — {@code <id>-<ЦВЕТ>}: формат {@code prefix:action:argument} даёт
+     * ровно одно поле, а нужны и участник, и выбор.
+     */
+    public static InlineKeyboardMarkup colors(Member target) {
+        List<InlineKeyboardRow> rows = new ArrayList<>();
+        InlineKeyboardRow row = new InlineKeyboardRow();
+        for (MemberColor color : MemberColor.values()) {
+            row.add(
+                    button(
+                            dot(color) + " " + color.title(),
+                            COLOR,
+                            target.id() + "-" + color.name()));
+            if (row.size() == 2) {
+                rows.add(row);
+                row = new InlineKeyboardRow();
+            }
+        }
+        if (!row.isEmpty()) {
+            rows.add(row);
+        }
+        rows.add(new InlineKeyboardRow(button("← Назад", MENU, "0")));
+        return InlineKeyboardMarkup.builder().keyboard(rows).build();
+    }
+
+    /**
+     * Кружок цвета для списка и кнопок.
+     *
+     * <p>Эмодзи, а не hex: в сообщении Telegram цвет задать нечем, а кружок виден и в списке, и на
+     * кнопке. Точный оттенок живёт в файле расписания, здесь важно лишь различать.
+     */
+    public static String dot(MemberColor color) {
+        return switch (color) {
+            case BLUE -> "🔵";
+            case RED -> "🔴";
+            case GREEN -> "🟢";
+            case PURPLE -> "🟣";
+            case ORANGE -> "🟠";
+            case TEAL -> "🩵";
+            case MAROON -> "🟤";
+            case OLIVE -> "🫒";
+        };
     }
 
     public static InlineKeyboardMarkup members(List<Member> candidates, String action) {

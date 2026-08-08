@@ -113,6 +113,31 @@ public final class Family {
         target.changeRoleBy(this, newRole);
     }
 
+    /**
+     * Правка имени участника.
+     *
+     * <p>Имя приходит из профиля Telegram и в семье часто бесполезно: «Naif» вместо «Папа». Менять
+     * его может родитель — тот же, кто раздаёт роли и приглашения.
+     */
+    public void renameMember(Actor actor, Member target, String newDisplayName) {
+        requireParentOfThisFamily(actor);
+        requireOwnMember(target);
+        if (!target.isActive()) {
+            throw new DomainException.InvalidTransition(null, "member is removed");
+        }
+        target.renameBy(this, newDisplayName);
+    }
+
+    /** Цвет для календаря. Право то же, что и на имя. */
+    public void recolorMember(Actor actor, Member target, MemberColor newColor) {
+        requireParentOfThisFamily(actor);
+        requireOwnMember(target);
+        if (!target.isActive()) {
+            throw new DomainException.InvalidTransition(null, "member is removed");
+        }
+        target.recolorBy(this, newColor);
+    }
+
     public void changeTimezone(Actor actor, ZoneId newTimezone) {
         requireParentOfThisFamily(actor);
         this.timezone = requireTimezone(newTimezone);

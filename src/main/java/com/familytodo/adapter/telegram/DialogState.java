@@ -56,6 +56,9 @@ public sealed interface DialogState {
      */
     record AwaitingShoppingItems(com.familytodo.domain.ShoppingList list) implements DialogState {}
 
+    /** {@code /family}: правим имя участника — ждём его текстом. */
+    record AwaitingMemberName(long memberId) implements DialogState {}
+
     /**
      * Нажали «Не могу» — ждём причину текстом.
      *

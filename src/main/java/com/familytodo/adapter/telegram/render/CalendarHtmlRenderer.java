@@ -2,6 +2,7 @@ package com.familytodo.adapter.telegram.render;
 
 import com.familytodo.adapter.telegram.view.HtmlEscaper;
 import com.familytodo.domain.Member;
+import com.familytodo.domain.MemberColor;
 import com.familytodo.domain.Task;
 import com.familytodo.domain.TaskStatus;
 import java.nio.charset.StandardCharsets;
@@ -79,7 +80,7 @@ public final class CalendarHtmlRenderer {
         List<LocalDate> columns = columns(from, days);
 
         if (days > MAX_DAYS_ON_AXIS) {
-            appendMonth(html, dated, zone, from, days);
+            appendMonth(html, dated, byId, zone, from, days);
         } else {
             appendTimeGrid(html, dated, byId, zone, columns);
         }
@@ -294,11 +295,12 @@ public final class CalendarHtmlRenderer {
                     .append(
                             String.format(
                                     Locale.ROOT,
-                                    "top:%.3f%%;height:%.3f%%;left:%.3f%%;width:%.3f%%",
+                                    "top:%.3f%%;height:%.3f%%;left:%.3f%%;width:%.3f%%;--own:%s",
                                     top,
                                     height,
                                     left,
-                                    width))
+                                    width,
+                                    colorOf(byId, task)))
                     .append("\">\n")
                     // время и название одной строкой: у получасового дела на телефоне высоты
                     // хватает строки на две, и каждая лишняя — это шанс не поместиться
@@ -315,7 +317,12 @@ public final class CalendarHtmlRenderer {
     // --- месячная сетка: больше недели ---
 
     private static void appendMonth(
-            StringBuilder html, List<Task> tasks, ZoneId zone, LocalDate from, int days) {
+            StringBuilder html,
+            List<Task> tasks,
+            Map<Long, Member> byId,
+            ZoneId zone,
+            LocalDate from,
+            int days) {
 
         // сетка начинается с понедельника: неделя, разрезанная посередине, не читается
         LocalDate start = from.with(DayOfWeek.MONDAY);
@@ -343,6 +350,8 @@ public final class CalendarHtmlRenderer {
                 Task task = entry.task();
                 html.append("<div class=\"chip ")
                         .append(statusClass(task.status()))
+                        .append("\" style=\"--own:")
+                        .append(colorOf(byId, task))
                         .append("\"><span class=\"at\">")
                         .append(entry.startLabel())
                         .append("</span> ")
@@ -494,6 +503,18 @@ public final class CalendarHtmlRenderer {
         return escape(first.format(DATE) + " — " + last.format(DATE));
     }
 
+    /**
+     * Цвет исполнителя. В сетке на неделю колонка узкая, имя в блоке читается плохо — по цвету
+     * видно с одного взгляда, чьё это дело.
+     *
+     * <p>Исполнителя могли исключить из семьи: тогда берём цвет по умолчанию, а не падаем.
+     */
+    private static String colorOf(Map<Long, Member> byId, Task task) {
+        Member member = byId.get(task.assignee().memberId());
+        return (member == null ? MemberColor.forMember(task.assignee().memberId()) : member.color())
+                .hex();
+    }
+
     private static String name(Map<Long, Member> byId, long memberId) {
         Member member = byId.get(memberId);
         // исполнителя могли исключить из семьи: в составе его уже нет, а дело осталось
@@ -614,7 +635,7 @@ public final class CalendarHtmlRenderer {
                  overflow: hidden;
                  padding: 3px 5px;
                  border-radius: 4px;
-                 background: var(--accent);
+                 background: var(--own, var(--accent));
                  color: var(--on-accent);
                  font-size: 11px;
                  line-height: 1.25;
@@ -641,7 +662,7 @@ public final class CalendarHtmlRenderer {
                .cell.outside { opacity: .45; }
                .date { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
                .chip {
-                 background: var(--accent);
+                 background: var(--own, var(--accent));
                  color: var(--on-accent);
                  border-radius: 4px;
                  padding: 2px 4px;
@@ -660,7 +681,7 @@ public final class CalendarHtmlRenderer {
                .loose .time { color: var(--muted); font-size: 12px; }
                .undated { margin-top: 18px; }
                .loose {
-                 border-left: 3px solid var(--accent);
+                 border-left: 3px solid var(--own, var(--accent));
                  padding: 8px 10px;
                  margin-bottom: 8px;
                  background: var(--slot);
