@@ -161,6 +161,93 @@ class DigestJobIT extends AbstractSqliteIT {
      * важным, а дела без даты не с чем сравнивать: «купить хлеб» не обещано ни на какой день, но
      * из семейного списка от этого не исчезает.
      */
+    /**
+     * Два дайджеста каждое утро: на сегодня и на неделю.
+     *
+     * <p>Дневной отвечает «что сегодня», недельный — «к чему готовиться». Один список на неделю
+     * отвечал на первый вопрос плохо: сегодняшнее тонуло среди дел на пятницу.
+     */
+    @Nested
+    class TwoDigests {
+
+        private static final Instant DIGEST_MOMENT = Instant.parse("2026-08-07T05:00:00Z");
+
+        @Test
+        void everyMorningBringsBothTheDayAndTheWeek() {
+            Family family = withHorizon("Румянцевы", 7);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            dated(family, mom, "Сегодняшнее", "2026-08-07T16:00:00Z");
+            dated(family, mom, "Через три дня", "2026-08-10T16:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.countFor(mom.id())).isEqualTo(2);
+            assertThat(notifier.sizeFor(mom.id(), 1)).isEqualTo(1);
+            assertThat(notifier.sizeFor(mom.id(), 7)).isEqualTo(2);
+        }
+
+        /** Пустой список не шлём — ни дневной, ни недельный. */
+        @Test
+        void anEmptyDayStillBringsTheWeek() {
+            Family family = withHorizon("Румянцевы", 7);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            dated(family, mom, "Через три дня", "2026-08-10T16:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.countFor(mom.id())).isEqualTo(1);
+            assertThat(notifier.sizeFor(mom.id(), 7)).isEqualTo(1);
+        }
+
+        /**
+         * ⚠️ Дела без даты идут только в дневной дайджест.
+         *
+         * <p>Иначе «купить хлеб» приходит дважды за одно утро — и человек перестаёт читать оба.
+         */
+        @Test
+        void undatedTasksGoIntoTheDayDigestOnly() {
+            Family family = withHorizon("Румянцевы", 7);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            undated(family, mom, "Купить хлеб");
+            dated(family, mom, "Через три дня", "2026-08-10T16:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.sizeFor(mom.id(), 1)).isEqualTo(1);
+            assertThat(notifier.sizeFor(mom.id(), 7)).isEqualTo(1);
+        }
+
+        /** Горизонт в один день означает один дайджест: второй был бы его копией. */
+        @Test
+        void aFamilyOnADailyHorizonGetsASingleDigest() {
+            Family family = withHorizon("Румянцевы", 1);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            dated(family, mom, "Сегодняшнее", "2026-08-07T16:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.countFor(mom.id())).isEqualTo(1);
+        }
+
+        /** Оба дайджеста — по-прежнему один раз в сутки. */
+        @Test
+        void aSecondRunTheSameMorningSendsNothing() {
+            Family family = withHorizon("Румянцевы", 7);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            dated(family, mom, "Сегодняшнее", "2026-08-07T16:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+            job.run();
+
+            assertThat(notifier.countFor(mom.id())).isEqualTo(2);
+        }
+    }
+
     @Nested
     class Horizon {
 
@@ -192,7 +279,7 @@ class DigestJobIT extends AbstractSqliteIT {
             clock.set(DIGEST_MOMENT);
             job.run();
 
-            assertThat(notifier.sizeFor(mom.id())).isEqualTo(3);
+            assertThat(notifier.sizeFor(mom.id(), 7)).isEqualTo(3);
         }
 
         @Test
@@ -206,7 +293,7 @@ class DigestJobIT extends AbstractSqliteIT {
             clock.set(DIGEST_MOMENT);
             job.run();
 
-            assertThat(notifier.sizeFor(mom.id())).isEqualTo(2);
+            assertThat(notifier.sizeFor(mom.id(), 30)).isEqualTo(2);
         }
 
         @Test
@@ -259,11 +346,6 @@ class DigestJobIT extends AbstractSqliteIT {
                     .isEqualTo(7);
         }
 
-        private Family withHorizon(String name, int days) {
-            Family family = family(name, MOSCOW);
-            family.changeDigestHorizon(anyParentOf(family), days);
-            return familyRepository.save(family);
-        }
     }
 
     @Nested
@@ -310,8 +392,9 @@ class DigestJobIT extends AbstractSqliteIT {
             clock.set(Instant.parse("2026-08-07T05:00:00Z"));
             job.run();
 
-            assertThat(notifier.sizeFor(mom.id())).isEqualTo(2);
-            assertThat(notifier.sizeFor(kid.id())).isEqualTo(1);
+            // дела без даты живут в дневном дайджесте
+            assertThat(notifier.sizeFor(mom.id(), 1)).isEqualTo(2);
+            assertThat(notifier.sizeFor(kid.id(), 1)).isEqualTo(1);
         }
 
         @Test
@@ -411,6 +494,24 @@ class DigestJobIT extends AbstractSqliteIT {
                         clock.instant()));
     }
 
+    private Family withHorizon(String name, int days) {
+        Family family = family(name, MOSCOW);
+        family.changeDigestHorizon(anyParentOf(family), days);
+        return familyRepository.save(family);
+    }
+
+    private void undated(Family family, Member who, String title) {
+        tasks.save(
+                Task.create(
+                        tasks.nextId(),
+                        family.id(),
+                        title,
+                        who.id(),
+                        new Assignee(who.id(), who.role()),
+                        null,
+                        clock.instant()));
+    }
+
     /** Настройки семьи меняет родитель — здесь важна не проверка прав, а сама смена значения. */
     private com.familytodo.domain.Actor anyParentOf(Family family) {
         return Member.restore(
@@ -447,6 +548,20 @@ class DigestJobIT extends AbstractSqliteIT {
 
         int sizeFor(long memberId) {
             return sizes.get(recipients.indexOf(memberId));
+        }
+
+        /** Дайджестов теперь два на утро, и «размер для участника» без горизонта неоднозначен. */
+        int sizeFor(long memberId, int horizonDays) {
+            for (int i = 0; i < recipients.size(); i++) {
+                if (recipients.get(i) == memberId && horizons.get(i) == horizonDays) {
+                    return sizes.get(i);
+                }
+            }
+            throw new AssertionError("дайджеста на " + horizonDays + " дн. не было");
+        }
+
+        long countFor(long memberId) {
+            return recipients.stream().filter(id -> id == memberId).count();
         }
 
         @Override

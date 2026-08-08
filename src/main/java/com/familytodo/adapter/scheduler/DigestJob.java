@@ -43,6 +43,9 @@ public class DigestJob {
      */
     private static final LocalTime TOO_LATE = LocalTime.NOON;
 
+    /** Дневной дайджест: «что сегодня». Его горизонт не настраивается — это и есть сегодня. */
+    private static final int DAY = 1;
+
     private final FamilyRepository families;
     private final MemberRepository members;
     private final TaskRepository tasks;
@@ -89,16 +92,18 @@ public class DigestJob {
         families.save(family);
 
         List<Member> roster = members.findActive(family.id());
+        int week = family.digestHorizonDays();
         for (Member recipient : roster) {
             if (!recipient.isReachable()) {
                 continue;
             }
-            List<Task> visible = withinHorizon(recipient, family, now);
-            if (visible.isEmpty()) {
-                // пустой дайджест не отправляем: сообщение «дел нет» это шум, а не польза
-                continue;
+            // дневной отвечает «что сегодня», недельный — «к чему готовиться». Один список на
+            // неделю отвечал на первый вопрос плохо: сегодняшнее тонуло среди дел на пятницу
+            deliverIfAny(recipient, roster, family, now, DAY, true);
+            if (week > DAY) {
+                // горизонт в один день означает один дайджест: второй был бы его копией
+                deliverIfAny(recipient, roster, family, now, week, false);
             }
-            deliver(recipient, visible, roster, family);
         }
         log.info("digest sent for family {}", family.id());
     }
@@ -110,21 +115,39 @@ public class DigestJob {
      * становится менее важным, а дела без даты не с чем сравнивать — «купить хлеб» не обещано ни на
      * какой день, но из семейного списка от этого не исчезает.
      */
-    private List<Task> withinHorizon(Member recipient, Family family, Instant now) {
+    private List<Task> withinHorizon(
+            Member recipient, Family family, Instant now, int days, boolean includeUndated) {
         Instant until =
-                family.today(now)
-                        .plusDays(family.digestHorizonDays())
-                        .atStartOfDay(family.timezone())
-                        .toInstant();
+                family.today(now).plusDays(days).atStartOfDay(family.timezone()).toInstant();
 
         List<Task> visible = new ArrayList<>(tasks.find(TaskQuery.inRange(recipient, null, until)));
-        visible.addAll(tasks.find(TaskQuery.undated(recipient)));
+        if (includeUndated) {
+            // ⚠️ только в дневной: иначе «купить хлеб» приходит дважды за одно утро, и человек
+            // перестаёт читать оба списка
+            visible.addAll(tasks.find(TaskQuery.undated(recipient)));
+        }
         return visible;
     }
 
-    private void deliver(Member recipient, List<Task> visible, List<Member> roster, Family family) {
+    private void deliverIfAny(
+            Member recipient,
+            List<Member> roster,
+            Family family,
+            Instant now,
+            int days,
+            boolean includeUndated) {
+        List<Task> visible = withinHorizon(recipient, family, now, days, includeUndated);
+        if (visible.isEmpty()) {
+            // пустой дайджест не отправляем: сообщение «дел нет» это шум, а не польза
+            return;
+        }
+        deliver(recipient, visible, roster, family, days);
+    }
+
+    private void deliver(
+            Member recipient, List<Task> visible, List<Member> roster, Family family, int days) {
         try {
-            notifier.digest(recipient, visible, roster, family.timezone(), family.digestHorizonDays());
+            notifier.digest(recipient, visible, roster, family.timezone(), days);
         } catch (RuntimeException e) {
             // один недоставленный дайджест не отменяет остальных в семье
             log.warn("digest for member {} not delivered", recipient.id(), e);
