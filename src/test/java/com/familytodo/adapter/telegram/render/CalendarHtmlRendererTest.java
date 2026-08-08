@@ -342,6 +342,38 @@ class CalendarHtmlRendererTest {
             assertThat(html).contains(">20<");
         }
 
+        /**
+         * ⚠️ Короткое дело не обрезается текстом.
+         *
+         * <p>Получасовой блок на телефоне — это около двадцати пикселей, а внутри время, название,
+         * место и исполнитель. С {@code overflow: hidden} название срезало на половине буквы: так
+         * «побегать» и превратилось в «побегат». Блок обязан растягиваться под своё содержимое.
+         */
+        @Test
+        void aShortBlockGrowsToFitItsText() {
+            assertThat(render(List.of(withDueDate("Побегать", MONDAY, 19, 0)), List.of(), 1))
+                    .contains("min-height: min-content");
+        }
+
+        /**
+         * ⚠️ Под последним делом остаётся запас, иначе растянувшийся блок срежет край сетки.
+         *
+         * <p>Дело «к 19:00» кончается в 19:30, ось по умолчанию — до 20:00, и блок, выросший под
+         * текст, упирался в границу контейнера.
+         */
+        @Test
+        void theAxisKeepsAnHourOfHeadroomBelowTheLastTask() {
+            String html = render(List.of(withDueDate("Побегать", MONDAY, 19, 0)), List.of(), 1);
+
+            assertThat(html).contains(">21<");
+        }
+
+        /** На узком экране час выше: иначе в блок не помещается ни строки. */
+        @Test
+        void narrowScreensGetTallerHours() {
+            assertThat(render(List.of(), List.of(), 1)).contains("@media (max-width:");
+        }
+
         /** Широкая сетка листается внутри себя, а не растягивает страницу. */
         @Test
         void aWideGridScrollsInsideItsOwnContainer() {

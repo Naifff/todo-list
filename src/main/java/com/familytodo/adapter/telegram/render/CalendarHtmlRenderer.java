@@ -186,6 +186,18 @@ public final class CalendarHtmlRenderer {
                 toHour = Math.max(toHour, Math.ceilDiv(entry.endSecond(), 3600));
             }
         }
+        // ⚠️ под последним делом остаётся час запаса: блок растягивается под свой текст и без
+        // запаса упирается в край сетки. Так и срезало «побегать» у дела «к 19:00»
+        int latestEnd = fromHour * 3600;
+        for (List<Entry> day : byDay.values()) {
+            for (Entry entry : day) {
+                latestEnd =
+                        Math.max(
+                                latestEnd,
+                                Math.max(entry.endSecond(), entry.startSecond() + DEFAULT_SECONDS));
+            }
+        }
+        toHour = Math.max(toHour, Math.ceilDiv(latestEnd, 3600) + 1);
         toHour = Math.min(24, Math.max(toHour, fromHour + 1));
 
         int axisFrom = fromHour * 3600;
@@ -275,13 +287,14 @@ public final class CalendarHtmlRenderer {
                                     left,
                                     width))
                     .append("\">\n")
-                    .append("<div class=\"time\">")
+                    // время и название одной строкой: у получасового дела на телефоне высоты
+                    // хватает строки на две, и каждая лишняя — это шанс не поместиться
+                    .append("<div class=\"title\"><span class=\"time\">")
                     .append(placed.value().when())
-                    .append("</div>\n")
-                    .append("<div class=\"title\">")
+                    .append("</span> ")
                     .append(escape(task.title()))
                     .append("</div>\n");
-            appendDetails(html, task, byId);
+            appendCompactDetails(html, task, byId);
             html.append("</div>\n");
         }
     }
@@ -330,6 +343,30 @@ public final class CalendarHtmlRenderer {
 
     // --- общее ---
 
+    /**
+     * В блоке сетки место, исполнитель и статус идут <b>одной строкой</b>: у получасового дела на
+     * высоту приходится строки три, и каждая отдельная строка — это ещё один шанс не поместиться.
+     */
+    private static void appendCompactDetails(
+            StringBuilder html, Task task, Map<Long, Member> byId) {
+        StringBuilder meta = new StringBuilder();
+        if (task.location() != null && !task.location().isBlank()) {
+            meta.append(escape(task.location())).append(" · ");
+        }
+        meta.append(name(byId, task.assignee().memberId()));
+        String status = statusLabel(task.status());
+        if (status != null) {
+            meta.append(" · ").append(status);
+        }
+        html.append("<div class=\"who\">").append(meta).append("</div>\n");
+
+        if (task.declineReason() != null && !task.declineReason().isBlank()) {
+            html.append("<div class=\"reason\">")
+                    .append(escape(task.declineReason()))
+                    .append("</div>\n");
+        }
+    }
+
     private static void appendDetails(StringBuilder html, Task task, Map<Long, Member> byId) {
         if (task.location() != null && !task.location().isBlank()) {
             html.append("<div class=\"where\">").append(escape(task.location())).append("</div>\n");
@@ -365,7 +402,7 @@ public final class CalendarHtmlRenderer {
                     .append("<div class=\"title\">")
                     .append(escape(task.title()))
                     .append("</div>\n");
-            appendDetails(html, task, byId);
+            appendCompactDetails(html, task, byId);
             html.append("</div>\n");
         }
         html.append("</section>\n");
@@ -500,6 +537,10 @@ public final class CalendarHtmlRenderer {
                    --slot: #1b1e24;
                  }
                }
+               /* на узком экране час выше — иначе в короткий блок не помещается ни строки */
+               @media (max-width: 480px) {
+                 :root { --hour: 62px; --col: 100%; }
+               }
                * { box-sizing: border-box; }
                body {
                  margin: 0;
@@ -554,6 +595,9 @@ public final class CalendarHtmlRenderer {
                }
                .block {
                  position: absolute;
+                 /* ⚠️ блок растягивается под своё содержимое: получасовое дело на телефоне это
+                    около двадцати пикселей, а внутри время, название, место и исполнитель */
+                 min-height: min-content;
                  overflow: hidden;
                  padding: 3px 5px;
                  border-radius: 4px;
