@@ -25,6 +25,10 @@ public final class ShoppingView {
 
     public static final String TOGGLE = "t";
 
+    public static final String ADD = "a";
+
+    public static final String CLEAR = "c";
+
     /** Купленное помечается и в тексте, и на кнопке — иначе в магазине не видно с одного взгляда. */
     public static final String BOUGHT_MARK = "✅";
 
@@ -75,17 +79,28 @@ public final class ShoppingView {
             rows.add(row);
         }
 
+        InlineKeyboardRow actions = new InlineKeyboardRow();
+        actions.add(button(Texts.SHOP_ADD, ADD, list));
+        // ⚠️ кнопка очистки появляется, только когда есть что убирать: иначе нажатие ничего не
+        // делает и читается как поломка — ответить «нечего убирать» отсюда нечем
+        if (items.stream().anyMatch(ShoppingItem::isBought)) {
+            actions.add(button(Texts.SHOP_CLEAR_BOUGHT, CLEAR, list));
+        }
+        rows.add(actions);
+
         InlineKeyboardRow footer = new InlineKeyboardRow();
         ShoppingList other = list == ShoppingList.FOOD ? ShoppingList.HOUSEHOLD : ShoppingList.FOOD;
-        footer.add(
-                InlineKeyboardButton.builder()
-                        .text(switchLabel(other))
-                        .callbackData(
-                                new CallbackData(PREFIX, OPEN, other.name()).serialize())
-                        .build());
+        footer.add(button(switchLabel(other), OPEN, other));
         rows.add(footer);
 
         return InlineKeyboardMarkup.builder().keyboard(rows).build();
+    }
+
+    private static InlineKeyboardButton button(String label, String action, ShoppingList list) {
+        return InlineKeyboardButton.builder()
+                .text(label)
+                .callbackData(new CallbackData(PREFIX, action, list.name()).serialize())
+                .build();
     }
 
     public static String header(ShoppingList list) {

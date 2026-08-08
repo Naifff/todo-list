@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import com.familytodo.adapter.telegram.BotRequest;
 import com.familytodo.adapter.telegram.BotSender;
 import com.familytodo.adapter.telegram.CallbackData;
+import com.familytodo.adapter.telegram.DialogStateStore;
 import com.familytodo.adapter.telegram.view.ShoppingView;
 import com.familytodo.adapter.telegram.view.Texts;
 import com.familytodo.application.ShoppingService;
@@ -53,7 +54,7 @@ class ShoppingHandlerTest {
     @BeforeEach
     void setUp() {
         shopping = new ShoppingService(items, Clock.fixed(NOW, ZoneOffset.UTC));
-        handler = new ShoppingHandler(shopping, sender);
+        handler = new ShoppingHandler(shopping, sender, new DialogStateStore());
 
         mom = members.save(Member.join(10L, FAMILY, 100L, 100L, "Мама", Role.PARENT, NOW));
         kid = members.save(Member.join(12L, FAMILY, 102L, 102L, "Петя", Role.CHILD, NOW));
