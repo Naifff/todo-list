@@ -5,6 +5,7 @@ import com.familytodo.adapter.telegram.BotSender;
 import com.familytodo.adapter.telegram.CallbackData;
 import com.familytodo.adapter.telegram.CallbackHandler;
 import com.familytodo.adapter.telegram.CommandHandler;
+import com.familytodo.adapter.telegram.render.CalendarHtmlRenderer;
 import com.familytodo.adapter.telegram.render.CalendarRenderer;
 import com.familytodo.adapter.telegram.view.AgendaView;
 import com.familytodo.application.FamilyService;
@@ -65,7 +66,8 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
     @Override
     public void handle(BotRequest request, CallbackData data) {
         boolean picture = AgendaView.PICTURE.equals(data.action());
-        if (!picture && !AgendaView.DAYS.equals(data.action())) {
+        boolean page = AgendaView.PAGE.equals(data.action());
+        if (!picture && !page && !AgendaView.DAYS.equals(data.action())) {
             return;
         }
         int days = (int) data.longArgument();
@@ -75,6 +77,10 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
         }
         if (picture) {
             sendPicture(request, request.requireMember(), days);
+            return;
+        }
+        if (page) {
+            sendPage(request, request.requireMember(), days);
             return;
         }
         show(request, request.requireMember(), days, true);
@@ -96,6 +102,33 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
         byte[] png = CalendarRenderer.render(dated, zone, today, days);
         sender.sendPhoto(
                 request.chatId(), png, "calendar-" + days + ".png", AgendaView.caption(days, undated));
+    }
+
+    /**
+     * Страница приходит файлом и новым сообщением — по той же причине, что и картинка: списка с
+     * кнопками она не заменяет, иначе человек остался бы без действий над делами.
+     *
+     * <p>В отличие от картинки, дела без даты входят в сам файл: на оси времени им места нет, а на
+     * странице есть.
+     */
+    private void sendPage(BotRequest request, Member viewer, int days) {
+        ZoneId zone = families.family(viewer).timezone();
+        LocalDate today = LocalDate.ofInstant(clock.instant(), zone);
+        Instant from = today.atStartOfDay(zone).toInstant();
+        Instant to = today.plusDays(days).atStartOfDay(zone).toInstant();
+
+        List<Task> dated = tasks.find(TaskQuery.inRange(viewer, from, to));
+        List<Task> undated = tasks.find(TaskQuery.undated(viewer));
+        Map<Long, Member> byId =
+                families.roster(viewer).stream()
+                        .collect(Collectors.toMap(Member::id, Function.identity()));
+
+        byte[] html = CalendarHtmlRenderer.render(dated, undated, byId, zone, today, days);
+        sender.sendDocument(
+                request.chatId(),
+                html,
+                "schedule-" + today + ".html",
+                AgendaView.caption(days, 0));
     }
 
     private void show(BotRequest request, Member viewer, int days, boolean rewrite) {

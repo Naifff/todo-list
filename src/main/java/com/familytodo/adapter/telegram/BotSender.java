@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendDocument;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
@@ -89,6 +90,37 @@ public class BotSender {
             return true;
         } catch (TelegramApiException e) {
             log.warn("telegram photo call failed: {}", e.getClass().getSimpleName());
+            return true;
+        }
+    }
+
+    /**
+     * Расписание страницей уходит документом — в отличие от картинки, и по той же логике.
+     *
+     * <p>Фотографию Telegram показывает прямо в ленте, поэтому картинке место там. Показывать в
+     * ленте HTML нечего: его надо открыть, а для этого он и должен приехать файлом.
+     *
+     * @return {@code false}, если получатель недостижим навсегда — как и у обычной отправки
+     */
+    public boolean sendDocument(long chatId, byte[] content, String fileName, String caption) {
+        SendDocument document =
+                SendDocument.builder()
+                        .chatId(chatId)
+                        .document(new InputFile(new ByteArrayInputStream(content), fileName))
+                        .caption(caption)
+                        .parseMode("HTML")
+                        .build();
+        try {
+            client.execute(document);
+            return true;
+        } catch (TelegramApiRequestException e) {
+            if (isPermanentlyUnreachable(e)) {
+                return false;
+            }
+            log.warn("telegram document call failed with code {}", e.getErrorCode());
+            return true;
+        } catch (TelegramApiException e) {
+            log.warn("telegram document call failed: {}", e.getClass().getSimpleName());
             return true;
         }
     }

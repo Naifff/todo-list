@@ -262,6 +262,105 @@ class AgendaHandlerTest {
     }
 
 
+    /**
+     * Второй вид: страница файлом.
+     *
+     * <p>Картинка обзорнее, страница подробнее — и живут они рядом, пока новый вид не обкатан на
+     * настоящих телефонах.
+     */
+    @Nested
+    class Page {
+
+        @Test
+        void pageButtonSendsADocumentNotAPhotoAndNotAMessage() {
+            task("Сегодняшнее", "2026-08-07T16:00:00Z");
+            sender.clear();
+
+            handler.handle(callback(mom), page(1));
+
+            assertThat(sender.documents).hasSize(1);
+            assertThat(sender.photos).isEmpty();
+            assertThat(sender.texts).isEmpty();
+            assertThat(sender.documents.getFirst().png()).isNotEmpty();
+        }
+
+        /** Имя латиницей и с датой: файл ляжет в «Загрузки» рядом с прошлыми. */
+        @Test
+        void documentIsNamedAsAnHtmlFileWithTheDate() {
+            handler.handle(callback(mom), page(7));
+
+            assertThat(sender.documents.getFirst().fileName())
+                    .endsWith(".html")
+                    .contains("2026-08-07")
+                    .matches("[A-Za-z0-9.\\-]+");
+        }
+
+        @Test
+        void theDocumentIsTheRenderedSchedule() {
+            task("Сегодняшнее", "2026-08-07T16:00:00Z");
+            sender.clear();
+
+            handler.handle(callback(mom), page(1));
+
+            String html =
+                    new String(
+                            sender.documents.getFirst().png(),
+                            java.nio.charset.StandardCharsets.UTF_8);
+            assertThat(html).startsWith("<!doctype html>").contains("Сегодняшнее");
+        }
+
+        @Test
+        void captionNamesTheHorizon() {
+            handler.handle(callback(mom), page(7));
+
+            assertThat(sender.documents.getFirst().caption()).contains("неделя");
+        }
+
+        /** Горизонт приходит от клиента и проверяется так же, как у списка и картинки. */
+        @Test
+        void forgedHorizonIsRejected() {
+            assertThatThrownBy(() -> handler.handle(callback(mom), page(365)))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThat(sender.documents).isEmpty();
+        }
+
+        @Test
+        void everyHorizonRenders() {
+            for (int days : AgendaView.HORIZONS) {
+                sender.clear();
+                handler.handle(callback(mom), page(days));
+                assertThat(sender.documents).hasSize(1);
+            }
+        }
+
+        /** Дела без даты в файл входят — в отличие от картинки, где им негде быть на оси. */
+        @Test
+        void undatedTasksAreInTheFileItself() {
+            tasks.create(mom, kid.id(), "Когда-нибудь разобрать гараж", null);
+            sender.clear();
+
+            handler.handle(callback(mom), page(1));
+
+            String html =
+                    new String(
+                            sender.documents.getFirst().png(),
+                            java.nio.charset.StandardCharsets.UTF_8);
+            assertThat(html).contains("Когда-нибудь разобрать гараж");
+        }
+
+        /** Кнопка есть на экране расписания рядом с картинкой. */
+        @Test
+        void theKeyboardOffersBothViews() {
+            handler.handle(command(mom));
+
+            List<String> labels = new ArrayList<>();
+            sender.markups.getFirst()
+                    .getKeyboard()
+                    .forEach(row -> row.forEach(button -> labels.add(button.getText())));
+            assertThat(labels).contains("Картинкой", "Страницей");
+        }
+    }
+
     @Nested
     class Picture {
 
@@ -359,6 +458,10 @@ class AgendaHandlerTest {
         return new CallbackData(AgendaView.PREFIX, AgendaView.PICTURE, Integer.toString(days));
     }
 
+    private static CallbackData page(int days) {
+        return new CallbackData(AgendaView.PREFIX, AgendaView.PAGE, Integer.toString(days));
+    }
+
     private static CallbackData horizon(int days) {
         return new CallbackData(AgendaView.PREFIX, AgendaView.DAYS, Integer.toString(days));
     }
@@ -390,6 +493,7 @@ class AgendaHandlerTest {
         private final List<String> edits = new ArrayList<>();
         private final List<InlineKeyboardMarkup> markups = new ArrayList<>();
         private final List<Photo> photos = new ArrayList<>();
+        private final List<Photo> documents = new ArrayList<>();
 
         record Photo(byte[] png, String fileName, String caption) {}
 
@@ -422,11 +526,18 @@ class AgendaHandlerTest {
             return true;
         }
 
+        @Override
+        public boolean sendDocument(long chatId, byte[] bytes, String fileName, String caption) {
+            documents.add(new Photo(bytes, fileName, caption));
+            return true;
+        }
+
         void clear() {
             texts.clear();
             edits.clear();
             markups.clear();
             photos.clear();
+            documents.clear();
         }
     }
 }
