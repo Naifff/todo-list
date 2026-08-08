@@ -368,6 +368,27 @@ class CalendarHtmlRendererTest {
             assertThat(html).contains(">21<");
         }
 
+        /**
+         * ⚠️ Ширину колонки задаёт число дней, а не только ширина экрана.
+         *
+         * <p>Один день занимает экран целиком, но у недели колонка обязана быть узкой. Правило
+         * {@code --col: 100%} в медиазапросе делало каждую из семи колонок во весь экран: на
+         * телефоне была видна ровно первая, и неделя выглядела как один день.
+         */
+        @Test
+        void aMultiDayGridDoesNotGiveEveryColumnTheWholeScreen() {
+            String week = render(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 7);
+
+            assertThat(week).doesNotContain("--col:100%");
+            assertThat(week).containsPattern("--col:\\d+px");
+        }
+
+        @Test
+        void aSingleDayFillsTheScreen() {
+            assertThat(render(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 1))
+                    .contains("--col:100%");
+        }
+
         /** На узком экране час выше: иначе в блок не помещается ни строки. */
         @Test
         void narrowScreensGetTallerHours() {
