@@ -5,6 +5,7 @@ import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
 import com.familytodo.domain.TaskStatus;
 import java.nio.charset.StandardCharsets;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -12,24 +13,28 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 /**
- * Расписание отдельным HTML-файлом — второй вид рядом с картинкой.
+ * Расписание отдельным HTML-файлом — та же сетка, что и на картинке.
  *
- * <p>Он подстраивается под ширину экрана, листается и вмещает то, чего в картинку не влезает:
- * место, исполнителя, статус, причину отказа. Картинка обзорнее, файл подробнее — поэтому оба и
- * живут рядом.
+ * <p>Форма взята из макетов {@code docs/с*.pdf}, а не {@code docs/л*.pdf}: список уже есть в самом
+ * сообщении расписания, и файл, повторяющий его другими словами, не добавлял бы ничего. Сетка
+ * показывает то, чего в списке нет вовсе — сколько времени дело занимает, что с чем пересекается и
+ * где в дне дыры.
  *
- * <p>⚠️ <b>Ни строки JavaScript и ни одного внешнего запроса.</b> Оба ограничения не косметические.
- * Внешняя ссылка на телефоне без сети — пустое место в файле, который для того и скачали. А
- * заголовок дела это пользовательский текст: в сообщении Telegram неэкранированный даёт HTTP 400,
- * неприятно, но безвредно, — в документе, который человек открывает браузером, он выполняется.
- * Поэтому весь текст проходит через {@link HtmlEscaper}, в атрибуты не попадает вовсе, а скриптов
- * нет как класса.
+ * <p>Форм две, как и у картинки: до недели — ось часов с колонками дней, дальше — месячная сетка
+ * неделями. Ось на тридцать дней была бы нечитаема, а месяц без оси читается.
+ *
+ * <p>⚠️ <b>Ни строки JavaScript и ни одного внешнего запроса.</b> Внешняя ссылка — пустое место в
+ * файле, который скачали, чтобы посмотреть без сети. А заголовок дела это пользовательский текст: в
+ * сообщении Telegram неэкранированный стоит HTTP 400, в документе, открытом браузером, он
+ * <b>выполняется</b>. Поэтому весь текст проходит через {@link HtmlEscaper}, а в атрибуты попадают
+ * только числа, посчитанные нами самими.
  */
 public final class CalendarHtmlRenderer {
 
@@ -37,8 +42,19 @@ public final class CalendarHtmlRenderer {
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd.MM");
 
+    /** За этой границей ось часов нечитаема, и картинка тоже переходит на месячную сетку. */
+    private static final int MAX_DAYS_ON_AXIS = 7;
+
+    /** Рабочие часы по умолчанию: ось покрывает их, даже если дел в них нет. */
+    private static final int DEFAULT_FROM_HOUR = 7;
+
+    private static final int DEFAULT_TO_HOUR = 20;
+
     /** Дело без конца занимает столько же, сколько на картинке: иначе виды разошлись бы. */
-    private static final int DEFAULT_MINUTES = 30;
+    private static final int DEFAULT_SECONDS = 30 * 60;
+
+    /** Совсем короткое дело всё равно должно быть видно и попадать под палец. */
+    private static final int MIN_BLOCK_SECONDS = 15 * 60;
 
     private CalendarHtmlRenderer() {}
 
@@ -50,14 +66,7 @@ public final class CalendarHtmlRenderer {
             LocalDate from,
             int days) {
 
-        List<LocalDate> columns = new ArrayList<>(days);
-        for (int i = 0; i < days; i++) {
-            columns.add(from.plusDays(i));
-        }
-
-        Map<LocalDate, List<Entry>> byDay = group(dated, zone, columns);
-
-        StringBuilder html = new StringBuilder(4096);
+        StringBuilder html = new StringBuilder(8192);
         html.append("<!doctype html>\n<html lang=\"ru\">\n<head>\n")
                 .append("<meta charset=\"utf-8\">\n")
                 .append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
@@ -65,11 +74,17 @@ public final class CalendarHtmlRenderer {
                 .append(style())
                 .append("</head>\n<body>\n");
 
-        html.append("<h1>Расписание</h1>\n");
-        html.append("<p class=\"range\">").append(rangeLabel(columns)).append("</p>\n");
+        List<LocalDate> columns = new ArrayList<>(days);
+        for (int i = 0; i < days; i++) {
+            columns.add(from.plusDays(i));
+        }
 
-        for (LocalDate day : columns) {
-            appendDay(html, day, byDay.get(day), from, byId);
+        html.append("<h1>").append(periodTitle(columns)).append("</h1>\n");
+
+        if (days > MAX_DAYS_ON_AXIS) {
+            appendMonth(html, dated, zone, from, days);
+        } else {
+            appendTimeGrid(html, dated, byId, zone, columns);
         }
 
         appendUndated(html, undated, byId);
@@ -78,79 +93,211 @@ public final class CalendarHtmlRenderer {
         return html.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    private static void appendDay(
+    // --- сетка с осью времени: 1..7 дней ---
+
+    private static void appendTimeGrid(
             StringBuilder html,
-            LocalDate day,
-            List<Entry> entries,
-            LocalDate today,
-            Map<Long, Member> byId) {
+            List<Task> tasks,
+            Map<Long, Member> byId,
+            ZoneId zone,
+            List<LocalDate> columns) {
 
-        html.append("<section class=\"day\">\n<h2>").append(dayLabel(day, today)).append("</h2>\n");
-        if (entries == null || entries.isEmpty()) {
-            // пустой день показываем явно: иначе непонятно, свободен он или потерялся
-            html.append("<p class=\"empty\">свободно</p>\n</section>\n");
-            return;
+        Map<LocalDate, List<Entry>> byDay = group(tasks, zone, columns);
+
+        // ⚠️ границы оси считаются теми же величинами, которыми потом позиционируются блоки.
+        // Разные правила для оси и для блока однажды стоили картинке ночного дела целиком
+        int fromHour = DEFAULT_FROM_HOUR;
+        int toHour = DEFAULT_TO_HOUR;
+        for (List<Entry> day : byDay.values()) {
+            for (Entry entry : day) {
+                fromHour = Math.min(fromHour, entry.startSecond() / 3600);
+                toHour = Math.max(toHour, Math.ceilDiv(entry.endSecond(), 3600));
+            }
+        }
+        toHour = Math.min(24, Math.max(toHour, fromHour + 1));
+
+        int axisFrom = fromHour * 3600;
+        int axisTo = toHour * 3600;
+        int span = axisTo - axisFrom;
+
+        html.append("<div class=\"scroll\">\n<div class=\"grid\" style=\"--days:")
+                .append(columns.size())
+                .append(";--hours:")
+                .append(toHour - fromHour)
+                .append("\">\n");
+
+        html.append("<div class=\"corner\"></div>\n");
+        for (LocalDate day : columns) {
+            html.append("<div class=\"head\">").append(dayHeader(day)).append("</div>\n");
         }
 
-        html.append("<ul class=\"items\">\n");
-        for (Entry entry : entries) {
-            appendEntry(html, entry, byId);
-        }
-        html.append("</ul>\n</section>\n");
-    }
-
-    private static void appendEntry(StringBuilder html, Entry entry, Map<Long, Member> byId) {
-        Task task = entry.task();
-        html.append("<li class=\"item ").append(statusClass(task.status())).append("\">\n");
-        html.append("<div class=\"when\">").append(entry.when()).append("</div>\n");
-        html.append("<div class=\"what\">").append(escape(task.title())).append("</div>\n");
-
-        html.append("<div class=\"meta\">");
-        if (task.location() != null && !task.location().isBlank()) {
-            html.append("<span class=\"where\">").append(escape(task.location())).append("</span>");
-        }
-        html.append("<span class=\"who\">").append(name(byId, task.assignee().memberId())).append("</span>");
-        String status = statusLabel(task.status());
-        if (status != null) {
-            html.append("<span class=\"status\">").append(status).append("</span>");
+        html.append("<div class=\"hours\">\n");
+        for (int hour = fromHour; hour < toHour; hour++) {
+            html.append("<div class=\"hour\">")
+                    .append("%02d".formatted(hour % 24))
+                    .append("</div>\n");
         }
         html.append("</div>\n");
 
+        for (LocalDate day : columns) {
+            html.append("<div class=\"col\">\n");
+            for (int hour = fromHour; hour < toHour; hour++) {
+                html.append("<div class=\"slot\"></div>\n");
+            }
+            appendBlocks(html, byDay.get(day), byId, axisFrom, axisTo, span);
+            html.append("</div>\n");
+        }
+
+        html.append("</div>\n</div>\n");
+    }
+
+    private static void appendBlocks(
+            StringBuilder html,
+            List<Entry> entries,
+            Map<Long, Member> byId,
+            int axisFrom,
+            int axisTo,
+            int span) {
+
+        if (entries == null || entries.isEmpty()) {
+            return;
+        }
+
+        List<Lanes.Span<Entry>> spans = new ArrayList<>(entries.size());
+        for (Entry entry : entries) {
+            // клип по оси: дело через полночь иначе даёт отрицательную высоту
+            int start = Math.max(axisFrom, entry.startSecond());
+            int end =
+                    Math.min(
+                            axisTo,
+                            Math.max(entry.endSecond(), entry.startSecond() + DEFAULT_SECONDS));
+            if (end > axisFrom && start < axisTo) {
+                spans.add(new Lanes.Span<>(entry, start, Math.max(end, start + MIN_BLOCK_SECONDS)));
+            }
+        }
+
+        for (Lanes.Placed<Entry> placed : Lanes.pack(spans)) {
+            double top = 100.0 * (placed.fromSecond() - axisFrom) / span;
+            double height = 100.0 * (placed.toSecond() - placed.fromSecond()) / span;
+            double width = 100.0 / placed.lanes();
+            double left = width * placed.lane();
+
+            Task task = placed.value().task();
+            html.append("<div class=\"block ")
+                    .append(statusClass(task.status()))
+                    // в атрибут идут только числа, посчитанные нами самими
+                    .append("\" style=\"")
+                    // ⚠️ Locale.ROOT обязателен: у формата по умолчанию берётся локаль машины, и
+                    // в русской в CSS уехало бы «top:8,000%» — правило, которое браузер отбросит
+                    .append(
+                            String.format(
+                                    Locale.ROOT,
+                                    "top:%.3f%%;height:%.3f%%;left:%.3f%%;width:%.3f%%",
+                                    top,
+                                    height,
+                                    left,
+                                    width))
+                    .append("\">\n")
+                    .append("<div class=\"time\">")
+                    .append(placed.value().when())
+                    .append("</div>\n")
+                    .append("<div class=\"title\">")
+                    .append(escape(task.title()))
+                    .append("</div>\n");
+            appendDetails(html, task, byId);
+            html.append("</div>\n");
+        }
+    }
+
+    // --- месячная сетка: больше недели ---
+
+    private static void appendMonth(
+            StringBuilder html, List<Task> tasks, ZoneId zone, LocalDate from, int days) {
+
+        // сетка начинается с понедельника: неделя, разрезанная посередине, не читается
+        LocalDate start = from.with(DayOfWeek.MONDAY);
+        int span = (int) (from.plusDays(days).toEpochDay() - start.toEpochDay());
+        int weeks = Math.max(1, Math.min(6, Math.ceilDiv(span, 7)));
+
+        List<LocalDate> cells = new ArrayList<>(weeks * 7);
+        for (int i = 0; i < weeks * 7; i++) {
+            cells.add(start.plusDays(i));
+        }
+        Map<LocalDate, List<Entry>> byDay = group(tasks, zone, cells);
+
+        html.append("<div class=\"scroll\">\n<div class=\"month\">\n");
+        for (DayOfWeek weekday : DayOfWeek.values()) {
+            html.append("<div class=\"head\">")
+                    .append(escape(shortWeekday(weekday)))
+                    .append("</div>\n");
+        }
+
+        for (LocalDate day : cells) {
+            boolean outside = day.isBefore(from) || !day.isBefore(from.plusDays(days));
+            html.append("<div class=\"cell").append(outside ? " outside" : "").append("\">\n");
+            html.append("<div class=\"date\">").append(day.getDayOfMonth()).append("</div>\n");
+            for (Entry entry : byDay.getOrDefault(day, List.of())) {
+                Task task = entry.task();
+                html.append("<div class=\"chip ")
+                        .append(statusClass(task.status()))
+                        .append("\"><span class=\"at\">")
+                        .append(entry.startLabel())
+                        .append("</span> ")
+                        .append(escape(task.title()))
+                        .append("</div>\n");
+            }
+            html.append("</div>\n");
+        }
+        html.append("</div>\n</div>\n");
+    }
+
+    // --- общее ---
+
+    private static void appendDetails(StringBuilder html, Task task, Map<Long, Member> byId) {
+        if (task.location() != null && !task.location().isBlank()) {
+            html.append("<div class=\"where\">").append(escape(task.location())).append("</div>\n");
+        }
+        html.append("<div class=\"who\">").append(name(byId, task.assignee().memberId()));
+        String status = statusLabel(task.status());
+        if (status != null) {
+            html.append(" · ").append(status);
+        }
+        html.append("</div>\n");
         if (task.declineReason() != null && !task.declineReason().isBlank()) {
             html.append("<div class=\"reason\">")
                     .append(escape(task.declineReason()))
                     .append("</div>\n");
         }
-        html.append("</li>\n");
     }
 
+    /**
+     * Дела без даты — то, чего на картинке нет и быть не может: на оси времени им негде стоять. На
+     * странице для них есть место, и терять их молча нельзя.
+     */
     private static void appendUndated(
             StringBuilder html, List<Task> undated, Map<Long, Member> byId) {
         if (undated == null || undated.isEmpty()) {
             return;
         }
 
-        html.append("<section class=\"day undated\">\n<h2>Без даты</h2>\n<ul class=\"items\">\n");
+        html.append("<section class=\"undated\">\n<h2>Без даты</h2>\n");
         for (Task task : undated) {
-            html.append("<li class=\"item ").append(statusClass(task.status())).append("\">\n");
-            html.append("<div class=\"what\">").append(escape(task.title())).append("</div>\n");
-            html.append("<div class=\"meta\">");
-            if (task.location() != null && !task.location().isBlank()) {
-                html.append("<span class=\"where\">")
-                        .append(escape(task.location()))
-                        .append("</span>");
-            }
-            html.append("<span class=\"who\">")
-                    .append(name(byId, task.assignee().memberId()))
-                    .append("</span></div>\n</li>\n");
+            html.append("<div class=\"loose ")
+                    .append(statusClass(task.status()))
+                    .append("\">\n")
+                    .append("<div class=\"title\">")
+                    .append(escape(task.title()))
+                    .append("</div>\n");
+            appendDetails(html, task, byId);
+            html.append("</div>\n");
         }
-        html.append("</ul>\n</section>\n");
+        html.append("</section>\n");
     }
 
     /**
-     * Раскладка по дням повторяет картинку намеренно: дело через полночь попадает в каждый день,
-     * который занимает, обрезанное по границам суток. Иначе сон обрывался бы на полуночи и наутро
-     * его не было.
+     * Раскладка по дням повторяет картинку: дело через полночь попадает в каждый день, который
+     * занимает, обрезанное по границам суток. Иначе сон обрывался бы на полуночи и наутро его не
+     * было.
      */
     private static Map<LocalDate, List<Entry>> group(
             List<Task> tasks, ZoneId zone, List<LocalDate> columns) {
@@ -167,9 +314,7 @@ public final class CalendarHtmlRenderer {
             }
             boolean deadlineOnly = task.startsAt() == null;
             Instant endsAt =
-                    task.endsAt() != null
-                            ? task.endsAt()
-                            : startsAt.plusSeconds(DEFAULT_MINUTES * 60L);
+                    task.endsAt() != null ? task.endsAt() : startsAt.plusSeconds(DEFAULT_SECONDS);
 
             LocalDateTime start = LocalDateTime.ofInstant(startsAt, zone);
             LocalDateTime end = LocalDateTime.ofInstant(endsAt, zone);
@@ -189,46 +334,37 @@ public final class CalendarHtmlRenderer {
                     // дело кончается ровно в полночь: следующему дню оно не принадлежит
                     continue;
                 }
-                bucket.add(new Entry(task, pieceFrom, when(pieceFrom, pieceTo, deadlineOnly)));
+                bucket.add(new Entry(task, pieceFrom, pieceTo, deadlineOnly));
             }
         }
 
         // ⚠️ порядок по МОМЕНТУ, а не по подписи: «к 19:00» начинается с буквы, и сортировка
         // строк уводила бы срок в конец дня, за «22:40». Тот же класс ошибки, что и хранение
         // моментов времени текстом
-        byDay.values().forEach(list -> list.sort(java.util.Comparator.comparing(Entry::startsAt)));
+        byDay.values().forEach(list -> list.sort(Comparator.comparing(Entry::from)));
         return byDay;
     }
 
-    /**
-     * У дела с интервалом показываем интервал, у остального — срок. Смешивать нельзя: «08:00–08:40»
-     * и «к 19:00» это разные обещания.
-     */
-    private static String when(LocalDateTime from, LocalDateTime to, boolean deadlineOnly) {
-        if (deadlineOnly) {
-            return "к " + from.format(TIME);
-        }
-        return from.format(TIME) + "–" + to.format(TIME);
+    private static String dayHeader(LocalDate day) {
+        return escape(day.getDayOfMonth() + " " + shortWeekday(day.getDayOfWeek()));
     }
 
-    private static String dayLabel(LocalDate day, LocalDate today) {
-        String weekday = day.getDayOfWeek().getDisplayName(TextStyle.FULL, RU);
-        String prefix = "";
-        if (day.equals(today)) {
-            prefix = "сегодня, ";
-        } else if (day.equals(today.plusDays(1))) {
-            prefix = "завтра, ";
-        }
-        return escape(prefix + day.format(DATE) + ", " + weekday);
+    /** Java отдаёт «пн», в макетах «Пн» — разница видна в шапке, где это единственное слово. */
+    private static String shortWeekday(DayOfWeek weekday) {
+        String name = weekday.getDisplayName(TextStyle.SHORT, RU);
+        return name.substring(0, 1).toUpperCase(RU) + name.substring(1);
     }
 
-    private static String rangeLabel(List<LocalDate> columns) {
+    private static String periodTitle(List<LocalDate> columns) {
         LocalDate first = columns.getFirst();
         LocalDate last = columns.getLast();
-        return escape(
-                first.equals(last)
-                        ? first.format(DATE)
-                        : first.format(DATE) + " — " + last.format(DATE));
+        if (first.equals(last)) {
+            return escape(
+                    first.getDayOfWeek().getDisplayName(TextStyle.FULL, RU)
+                            + ", "
+                            + first.format(DATE));
+        }
+        return escape(first.format(DATE) + " — " + last.format(DATE));
     }
 
     private static String name(Map<Long, Member> byId, long memberId) {
@@ -260,6 +396,9 @@ public final class CalendarHtmlRenderer {
     /**
      * Стиль встроен целиком: внешний файл на телефоне без сети не загрузится, а расписание для того
      * и скачивают, чтобы посмотреть в дороге.
+     *
+     * <p>Широкая сетка листается внутри своего контейнера. Страница целиком горизонтально не едет:
+     * иначе заголовок и блок «без даты» уезжали бы вместе с ней.
      */
     private static String style() {
         return """
@@ -268,65 +407,149 @@ public final class CalendarHtmlRenderer {
                  --bg: #ffffff;
                  --fg: #1a1a1a;
                  --muted: #6b6b6b;
-                 --line: #e4e4e4;
-                 --card: #f7f7f7;
+                 --line: #e0e0e0;
+                 --slot: #fafafa;
                  --accent: #f26b21;
+                 --on-accent: #ffffff;
+                 --col: 150px;
+                 --hour: 46px;
                }
                @media (prefers-color-scheme: dark) {
                  :root {
                    --bg: #16181c;
                    --fg: #e9e9e9;
-                   --muted: #9a9a9a;
+                   --muted: #6f7480;
                    --line: #2c2f36;
-                   --card: #1e2127;
+                   --slot: #1b1e24;
                  }
                }
                * { box-sizing: border-box; }
                body {
                  margin: 0;
-                 padding: 16px;
+                 padding: 14px;
                  background: var(--bg);
                  color: var(--fg);
-                 font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                 max-width: 720px;
-                 margin-inline: auto;
+                 font: 15px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                }
-               h1 { font-size: 20px; margin: 0 0 2px; }
-               .range { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
-               .day { margin-bottom: 22px; }
-               h2 {
-                 font-size: 15px;
-                 margin: 0 0 8px;
-                 padding-bottom: 6px;
-                 border-bottom: 1px solid var(--line);
+               h1 { font-size: 19px; margin: 0 0 12px; }
+               h2 { font-size: 15px; margin: 0 0 8px; }
+               .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+               .grid {
+                 display: grid;
+                 grid-template-columns: 38px repeat(var(--days), minmax(var(--col), 1fr));
+                 grid-template-rows: auto calc(var(--hours) * var(--hour));
+                 min-width: min-content;
+                 border: 1px solid var(--line);
+                 border-radius: 8px;
+                 overflow: hidden;
+               }
+               .corner { border-bottom: 1px solid var(--line); }
+               .head {
+                 padding: 6px 8px;
+                 font-size: 12px;
                  font-weight: 600;
+                 text-align: center;
+                 border-left: 1px solid var(--line);
+                 border-bottom: 1px solid var(--line);
+                 white-space: nowrap;
                }
-               .empty { margin: 0; color: var(--muted); font-size: 14px; }
-               .items { list-style: none; margin: 0; padding: 0; }
-               .item {
-                 background: var(--card);
+               .hours { display: flex; flex-direction: column; }
+               .hour {
+                 height: var(--hour);
+                 font-size: 11px;
+                 color: var(--muted);
+                 text-align: right;
+                 padding: 0 5px;
+                 font-variant-numeric: tabular-nums;
+               }
+               .col { position: relative; border-left: 1px solid var(--line); }
+               .slot {
+                 height: var(--hour);
+                 border-bottom: 1px solid var(--line);
+                 background: var(--slot);
+               }
+               .block {
+                 position: absolute;
+                 overflow: hidden;
+                 padding: 3px 5px;
+                 border-radius: 4px;
+                 background: var(--accent);
+                 color: var(--on-accent);
+                 font-size: 11px;
+                 line-height: 1.25;
+               }
+               .block.done, .block.declined { background: var(--muted); }
+               .block.done .title { text-decoration: line-through; }
+               .time { font-variant-numeric: tabular-nums; opacity: .85; }
+               .title { font-weight: 600; overflow-wrap: anywhere; }
+               .where, .who, .reason { opacity: .85; overflow-wrap: anywhere; }
+               .month {
+                 display: grid;
+                 grid-template-columns: repeat(7, minmax(92px, 1fr));
+                 min-width: min-content;
+                 border: 1px solid var(--line);
+                 border-radius: 8px;
+                 overflow: hidden;
+               }
+               .cell {
+                 min-height: 92px;
+                 padding: 4px;
+                 border-left: 1px solid var(--line);
+                 border-top: 1px solid var(--line);
+               }
+               .cell.outside { opacity: .45; }
+               .date { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+               .chip {
+                 background: var(--accent);
+                 color: var(--on-accent);
+                 border-radius: 4px;
+                 padding: 2px 4px;
+                 margin-bottom: 2px;
+                 font-size: 11px;
+                 overflow-wrap: anywhere;
+               }
+               .chip.done, .chip.declined { background: var(--muted); }
+               .at { font-variant-numeric: tabular-nums; opacity: .85; }
+               .undated { margin-top: 18px; }
+               .loose {
                  border-left: 3px solid var(--accent);
-                 border-radius: 6px;
-                 padding: 10px 12px;
+                 padding: 8px 10px;
                  margin-bottom: 8px;
+                 background: var(--slot);
+                 border-radius: 6px;
+                 font-size: 13px;
                }
-               .item.done { border-left-color: var(--muted); opacity: .65; }
-               .item.declined { border-left-color: var(--muted); opacity: .65; }
-               .item.done .what { text-decoration: line-through; }
-               .when { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); }
-               .what { font-weight: 600; overflow-wrap: anywhere; }
-               .meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
-               .meta span + span::before { content: " · "; }
-               .reason { font-size: 13px; margin-top: 4px; overflow-wrap: anywhere; }
+               .loose.done, .loose.declined { border-left-color: var(--muted); opacity: .7; }
                </style>
                """;
     }
 
-    /**
-     * Кусок дела в пределах одних суток.
-     *
-     * <p>{@code startsAt} хранится отдельно от подписи именно потому, что сортировать по подписи
-     * нельзя: она человеческая, а не машинная.
-     */
-    private record Entry(Task task, LocalDateTime startsAt, String when) {}
+    /** Кусок дела в пределах одних суток. */
+    private record Entry(Task task, LocalDateTime from, LocalDateTime to, boolean deadlineOnly) {
+
+        int startSecond() {
+            return from.toLocalTime().toSecondOfDay();
+        }
+
+        /** Конец за полночь считаем концом суток: блок принадлежит колонке своего дня. */
+        int endSecond() {
+            return to.toLocalDate().equals(from.toLocalDate())
+                    ? to.toLocalTime().toSecondOfDay()
+                    : 24 * 3600;
+        }
+
+        String startLabel() {
+            return from.format(TIME);
+        }
+
+        /**
+         * У дела с интервалом показываем интервал, у остального — срок. Смешивать нельзя:
+         * «08:00–08:40» и «к 19:00» это разные обещания.
+         */
+        String when() {
+            return deadlineOnly
+                    ? "к " + from.format(TIME)
+                    : from.format(TIME) + "–" + to.format(TIME);
+        }
+    }
 }
