@@ -70,6 +70,7 @@ class MemberTest {
                         Role.PARENT,
                         MemberStatus.REMOVED,
                         false,
+                        MemberColor.BLUE,
                         NOW);
 
         assertThat(member.isReachable()).isFalse();

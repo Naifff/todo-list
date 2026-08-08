@@ -37,6 +37,28 @@ class MigrationIT extends AbstractSqliteIT {
                         "idx_shopping_family");
     }
 
+    /** ⚠️ Цвет раздаётся миграцией всем, кто уже в семье: без него календарь рисовать нечем. */
+    @Test
+    void everyExistingMemberGetsAColour() {
+        jdbc.sql(
+                        """
+                        insert into family (id, name, timezone, digest_time, last_digest_date, created_at)
+                        values (1, 'Ивановы', 'Europe/Moscow', '08:00', '2026-08-08', 0)
+                        """)
+                .update();
+        jdbc.sql(
+                        """
+                        insert into member
+                          (id, family_id, telegram_user_id, private_chat_id,
+                           display_name, role, status, color, created_at)
+                        values (1, 1, 100, 100, 'Мама', 'PARENT', 'ACTIVE', 'BLUE', 0)
+                        """)
+                .update();
+
+        assertThat(jdbc.sql("select count(*) from member where color is null").query(Integer.class).single())
+                .isZero();
+    }
+
     /** Частичный индекс — иначе он растёт вместе с архивом закрытых задач, а нужен только по открытым. */
     @Test
     void dueIndexIsPartial() {

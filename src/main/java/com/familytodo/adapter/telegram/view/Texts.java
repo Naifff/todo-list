@@ -174,6 +174,18 @@ public final class Texts {
 
     public static final String ASK_WHO_TO_REMOVE = "Кого исключить?";
 
+    public static final String PROFILE_IS_FOR_PARENTS = "Имя и цвет меняют только родители.";
+
+    public static final String ASK_WHOSE_PROFILE = "Кого правим?";
+
+    public static final String PROFILE_HEADER = "Имя показывается в списках и в расписании, цвет — в расписании.";
+
+    public static final String ASK_NEW_MEMBER_NAME = "Как записать этого человека?";
+
+    public static final String MEMBER_NAME_REJECTED = "Не понял. Имя не пустое и до 40 символов.";
+
+    public static final String ASK_COLOR = "Каким цветом рисовать его дела?";
+
     public static final String REMOVED_NOTICE = "Исключён";
 
     public static final String TIMEZONE_SAVED = "Часовой пояс сохранён";

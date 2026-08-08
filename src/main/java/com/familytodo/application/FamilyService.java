@@ -8,6 +8,7 @@ import com.familytodo.domain.Actor;
 import com.familytodo.domain.DomainException;
 import com.familytodo.domain.Family;
 import com.familytodo.domain.Member;
+import com.familytodo.domain.MemberColor;
 import com.familytodo.domain.Role;
 import com.familytodo.domain.Task;
 import java.time.Clock;
@@ -89,6 +90,24 @@ public class FamilyService {
 
         family.changeRole(actor.asActor(), target, newRole, members.findActive(actor.familyId()));
         members.save(target);
+    }
+
+    /** Правка имени: родитель — кому угодно, любой — себе. */
+    public Member renameMember(Member actor, long targetMemberId, String newName) {
+        Family family = family(actor);
+        Member target = member(actor.familyId(), targetMemberId);
+
+        family.renameMember(actor.asActor(), target, newName);
+        return members.save(target);
+    }
+
+    /** Цвет для календаря. Право то же, что и на имя. */
+    public Member recolorMember(Member actor, long targetMemberId, MemberColor color) {
+        Family family = family(actor);
+        Member target = member(actor.familyId(), targetMemberId);
+
+        family.recolorMember(actor.asActor(), target, color);
+        return members.save(target);
     }
 
     public Family changeTimezone(Member actor, ZoneId zone) {

@@ -168,6 +168,7 @@ class UpdateRouterTest {
                             Role.PARENT,
                             MemberStatus.REMOVED,
                             false,
+                            com.familytodo.domain.MemberColor.BLUE,
                             NOW));
 
             router().route(message(MEMBER_TELEGRAM_ID, "/my"));

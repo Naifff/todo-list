@@ -6,6 +6,9 @@ import com.familytodo.adapter.telegram.BotSettings;
 import com.familytodo.adapter.telegram.CallbackData;
 import com.familytodo.adapter.telegram.CallbackHandler;
 import com.familytodo.adapter.telegram.CommandHandler;
+import com.familytodo.adapter.telegram.DialogHandler;
+import com.familytodo.adapter.telegram.DialogState;
+import com.familytodo.adapter.telegram.DialogStateStore;
 import com.familytodo.adapter.telegram.keyboard.TimezoneKeyboard;
 import com.familytodo.adapter.telegram.view.FamilyView;
 import com.familytodo.adapter.telegram.view.HtmlEscaper;
@@ -16,10 +19,12 @@ import com.familytodo.domain.DomainException;
 import com.familytodo.domain.Family;
 import com.familytodo.domain.Invite;
 import com.familytodo.domain.Member;
+import com.familytodo.domain.MemberColor;
 import com.familytodo.domain.Role;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.Optional;
 import java.util.Set;
 import org.slf4j.Logger;
@@ -29,20 +34,26 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 
 /** Состав семьи, приглашения и настройки: {@code /family}. */
 @Component
-public class FamilyHandler implements CommandHandler, CallbackHandler {
+public class FamilyHandler implements CommandHandler, CallbackHandler, DialogHandler {
 
     private static final Logger log = LoggerFactory.getLogger(FamilyHandler.class);
 
     private final FamilyService families;
     private final InviteService invites;
     private final BotSender sender;
+    private final DialogStateStore dialogs;
     private final String botUsername;
 
     public FamilyHandler(
-            FamilyService families, InviteService invites, BotSender sender, BotSettings settings) {
+            FamilyService families,
+            InviteService invites,
+            BotSender sender,
+            DialogStateStore dialogs,
+            BotSettings settings) {
         this.families = families;
         this.invites = invites;
         this.sender = sender;
+        this.dialogs = dialogs;
         this.botUsername = settings.username();
     }
 
@@ -81,6 +92,11 @@ public class FamilyHandler implements CommandHandler, CallbackHandler {
             case FamilyView.TIMEZONE -> timezone(request, actor, data.argument());
             case FamilyView.DIGEST -> digest(request, actor, data.argument());
             case FamilyView.HORIZON -> horizon(request, actor, data.argument());
+            case FamilyView.PROFILE -> chooseWhoseProfile(request, actor);
+            case FamilyView.PROFILE_PICK -> showProfile(request, actor, data.longArgument());
+            case FamilyView.RENAME -> askForNewName(request, actor, data.longArgument());
+            case FamilyView.COLORS -> showColors(request, actor, data.longArgument());
+            case FamilyView.COLOR -> recolor(request, actor, data.argument());
             default -> log.warn("unknown family action {}", data.action());
         }
     }
@@ -109,6 +125,77 @@ public class FamilyHandler implements CommandHandler, CallbackHandler {
                         + (role == Role.PARENT ? "взрослый" : "ребёнок")
                         + "), действует сутки и только один раз:\n\n"
                         + HtmlEscaper.escape(link));
+    }
+
+    /** Имя и цвет правит родитель — тот же, кто раздаёт роли и приглашения. */
+    private void chooseWhoseProfile(BotRequest request, Member actor) {
+        if (refuseNonParent(actor, Texts.PROFILE_IS_FOR_PARENTS, request)) {
+            return;
+        }
+        edit(
+                request,
+                Texts.ASK_WHOSE_PROFILE,
+                FamilyView.members(families.roster(actor), FamilyView.PROFILE_PICK));
+    }
+
+    private void showProfile(BotRequest request, Member actor, long targetId) {
+        edit(request, Texts.PROFILE_HEADER, FamilyView.profile(target(actor, targetId)));
+    }
+
+    private void askForNewName(BotRequest request, Member actor, long targetId) {
+        Member target = target(actor, targetId);
+        dialogs.put(request.telegramUserId(), new DialogState.AwaitingMemberName(target.id()));
+        sender.send(request.chatId(), Texts.ASK_NEW_MEMBER_NAME);
+    }
+
+    private void showColors(BotRequest request, Member actor, long targetId) {
+        edit(request, Texts.ASK_COLOR, FamilyView.colors(target(actor, targetId)));
+    }
+
+    /** Аргумент кнопки — {@code <id>-<ЦВЕТ>}, и он недоверенный: разбираем строго. */
+    private void recolor(BotRequest request, Member actor, String argument) {
+        int dash = argument.lastIndexOf('-');
+        if (dash <= 0) {
+            throw new IllegalArgumentException("malformed color argument");
+        }
+        long targetId = Long.parseLong(argument.substring(0, dash));
+        MemberColor color = MemberColor.valueOf(argument.substring(dash + 1));
+
+        families.recolorMember(actor, targetId, color);
+        showMenu(request, actor);
+    }
+
+    /** Свободный текст принимаем только внутри начатого сценария. */
+    @Override
+    public boolean continueDialog(BotRequest request) {
+        Optional<DialogState.AwaitingMemberName> awaiting =
+                dialogs.get(request.telegramUserId())
+                        .filter(DialogState.AwaitingMemberName.class::isInstance)
+                        .map(DialogState.AwaitingMemberName.class::cast);
+        if (awaiting.isEmpty()) {
+            return false;
+        }
+
+        try {
+            families.renameMember(request.requireMember(), awaiting.get().memberId(), request.text());
+        } catch (IllegalArgumentException e) {
+            // ⚠️ только класс исключения: в тексте лежит то, что человек написал
+            log.warn("member rename rejected: {}", e.getClass().getSimpleName());
+            sender.send(request.chatId(), Texts.MEMBER_NAME_REJECTED);
+            return true;
+        }
+
+        dialogs.clear(request.telegramUserId());
+        Member updated = request.requireMember();
+        sender.send(request.chatId(), roster(updated), FamilyView.menu(isParent(updated)));
+        return true;
+    }
+
+    private Member target(Member actor, long targetId) {
+        return families.roster(actor).stream()
+                .filter(m -> m.id() == targetId)
+                .findFirst()
+                .orElseThrow(() -> new DomainException.NotFound("member is not found"));
     }
 
     private void askWhoToRemove(BotRequest request, Member actor) {
