@@ -308,6 +308,47 @@ class AgendaHandlerTest {
             assertThat(html).startsWith("<!doctype html>").contains("Сегодняшнее");
         }
 
+        /**
+         * ⚠️ В файле ровно столько дней, сколько попросили.
+         *
+         * <p>Тесты до этого спрашивали «файл пришёл?», а не «что в нём»: неделя сеткой приезжала
+         * одним днём, и ни один из них этого не замечал.
+         */
+        @Test
+        void theDocumentCoversTheRequestedNumberOfDays() {
+            for (int days : List.of(1, 3, 7)) {
+                sender.clear();
+                handler.handle(callback(mom), page(days));
+
+                String html =
+                        new String(
+                                sender.documents.getFirst().png(),
+                                java.nio.charset.StandardCharsets.UTF_8);
+                assertThat(countOf(html, "class=\"col\""))
+                        .describedAs("дней в сетке при горизонте %s", days)
+                        .isEqualTo(days);
+            }
+        }
+
+        /**
+         * ⚠️ Горизонт входит в имя файла.
+         *
+         * <p>Без него день и неделя приезжают под одним именем, и телефон открывает ранее
+         * скачанный файл вместо нового. Снаружи это выглядит как «неделя присылает день», причём
+         * сервер при этом отдаёт правильный файл — поэтому ни один тест содержимого не помогал.
+         */
+        @Test
+        void everyHorizonGetsItsOwnFileName() {
+            List<String> names = new ArrayList<>();
+            for (int days : AgendaView.HORIZONS) {
+                sender.clear();
+                handler.handle(callback(mom), page(days));
+                names.add(sender.documents.getFirst().fileName());
+            }
+
+            assertThat(names).doesNotHaveDuplicates();
+        }
+
         @Test
         void captionNamesTheHorizon() {
             handler.handle(callback(mom), page(7));
@@ -367,6 +408,28 @@ class AgendaHandlerTest {
     @Nested
     class ListPage {
 
+        /**
+         * ⚠️ Кнопки видов несут <b>текущий</b> горизонт.
+         *
+         * <p>Человек переключает на неделю и жмёт «Сеткой» — и получает день, если кнопка осталась
+         * с прежним числом. Снаружи это выглядит как «неделя присылает день».
+         */
+        @Test
+        void theViewButtonsCarryTheHorizonThatIsSelectedNow() {
+            handler.handle(callback(mom), horizon(7));
+
+            List<String> data = new ArrayList<>();
+            sender.markups
+                    .getLast()
+                    .getKeyboard()
+                    .forEach(row -> row.forEach(button -> data.add(button.getCallbackData())));
+
+            assertThat(data)
+                    .contains(
+                            AgendaView.PREFIX + ":" + AgendaView.PAGE + ":7",
+                            AgendaView.PREFIX + ":" + AgendaView.LIST + ":7");
+        }
+
         @Test
         void listButtonSendsADocument() {
             task("Сегодняшнее", "2026-08-07T16:00:00Z");
@@ -420,6 +483,14 @@ class AgendaHandlerTest {
 
     private static CallbackData list(int days) {
         return new CallbackData(AgendaView.PREFIX, AgendaView.LIST, Integer.toString(days));
+    }
+
+    private static int countOf(String haystack, String needle) {
+        int count = 0;
+        for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + 1)) {
+            count++;
+        }
+        return count;
     }
 
     private static CallbackData page(int days) {
