@@ -33,6 +33,22 @@ public final class Texts {
 
     public static final String SHOP_TRUNCATED = "Показаны первые 30 позиций.";
 
+    public static final String SHOP_ADD = "➕ Добавить";
+
+    public static final String SHOP_CLEAR_BOUGHT = "🧹 Убрать купленное";
+
+    public static final String SHOP_ASK_ITEMS =
+            """
+            Что купить? Можно списком — по одной позиции в строке:
+
+            <code>молоко
+            хлеб
+            стиральный порошок</code>""";
+
+    /** Одна фраза на обе причины: пусто и слишком длинно. Разбираться человеку тут не в чем. */
+    public static final String SHOP_ITEM_REJECTED =
+            "Не понял. Одна позиция в строке, до 100 символов, не больше 20 за раз.";
+
     public static final String SHOP_SWITCH_TO_FOOD = "🍎 Продукты";
 
     public static final String SHOP_SWITCH_TO_HOUSEHOLD = "🧴 Хозяйство";
