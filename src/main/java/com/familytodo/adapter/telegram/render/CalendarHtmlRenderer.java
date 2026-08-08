@@ -56,6 +56,14 @@ public final class CalendarHtmlRenderer {
     /** Совсем короткое дело всё равно должно быть видно и попадать под палец. */
     private static final int MIN_BLOCK_SECONDS = 15 * 60;
 
+    /**
+     * Ширина колонки, когда дней больше одного.
+     *
+     * <p>Уже — и название дела не читается, шире — и на телефоне в экран не влезает даже два дня.
+     * Остальное добирается горизонтальным листанием внутри сетки.
+     */
+    private static final int MULTI_DAY_COLUMN = 128;
+
     private CalendarHtmlRenderer() {}
 
     /** Сетка: ось часов до недели, месячная сетка дальше. */
@@ -204,10 +212,15 @@ public final class CalendarHtmlRenderer {
         int axisTo = toHour * 3600;
         int span = axisTo - axisFrom;
 
+        // ⚠️ ширина колонки зависит от числа дней, а не только от ширины экрана. Один день
+        // занимает экран целиком; у недели колонка обязана быть узкой, иначе каждая из семи
+        // растянется во весь экран и видна будет ровно первая — неделя как один день
         html.append("<div class=\"scroll\">\n<div class=\"grid\" style=\"--days:")
                 .append(columns.size())
                 .append(";--hours:")
                 .append(toHour - fromHour)
+                .append(";--col:")
+                .append(columns.size() == 1 ? "100%" : MULTI_DAY_COLUMN + "px")
                 .append("\">\n");
 
         html.append("<div class=\"corner\"></div>\n");
@@ -539,7 +552,7 @@ public final class CalendarHtmlRenderer {
                }
                /* на узком экране час выше — иначе в короткий блок не помещается ни строки */
                @media (max-width: 480px) {
-                 :root { --hour: 62px; --col: 100%; }
+                 :root { --hour: 62px; }
                }
                * { box-sizing: border-box; }
                body {
