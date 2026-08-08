@@ -5,7 +5,7 @@ import com.familytodo.adapter.telegram.BotSender;
 import com.familytodo.adapter.telegram.CallbackData;
 import com.familytodo.adapter.telegram.CallbackHandler;
 import com.familytodo.adapter.telegram.CommandHandler;
-import com.familytodo.adapter.telegram.render.CalendarRenderer;
+import com.familytodo.adapter.telegram.render.CalendarHtmlRenderer;
 import com.familytodo.adapter.telegram.view.AgendaView;
 import com.familytodo.application.FamilyService;
 import com.familytodo.application.TaskQuery;
@@ -64,8 +64,9 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
 
     @Override
     public void handle(BotRequest request, CallbackData data) {
-        boolean picture = AgendaView.PICTURE.equals(data.action());
-        if (!picture && !AgendaView.DAYS.equals(data.action())) {
+        boolean grid = AgendaView.PAGE.equals(data.action());
+        boolean list = AgendaView.LIST.equals(data.action());
+        if (!grid && !list && !AgendaView.DAYS.equals(data.action())) {
             return;
         }
         int days = (int) data.longArgument();
@@ -73,29 +74,43 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
         if (!AgendaView.HORIZONS.contains(days)) {
             throw new IllegalArgumentException("unsupported horizon " + days);
         }
-        if (picture) {
-            sendPicture(request, request.requireMember(), days);
+        if (grid || list) {
+            sendPage(request, request.requireMember(), days, list);
             return;
         }
         show(request, request.requireMember(), days, true);
     }
 
     /**
-     * Картинка приходит новым сообщением, а не заменяет список: у неё нет кнопок, и переписать ею
-     * список означало бы отобрать у человека все действия над делами.
+     * Страница приходит файлом и новым сообщением — по той же причине, что и картинка: списка с
+     * кнопками она не заменяет, иначе человек остался бы без действий над делами.
+     *
+     * <p>Дела без даты входят в сам файл, поэтому в подписи их не пересчитываем.
      */
-    private void sendPicture(BotRequest request, Member viewer, int days) {
+    private void sendPage(BotRequest request, Member viewer, int days, boolean asList) {
         ZoneId zone = families.family(viewer).timezone();
         LocalDate today = LocalDate.ofInstant(clock.instant(), zone);
         Instant from = today.atStartOfDay(zone).toInstant();
         Instant to = today.plusDays(days).atStartOfDay(zone).toInstant();
 
         List<Task> dated = tasks.find(TaskQuery.inRange(viewer, from, to));
-        int undated = tasks.find(TaskQuery.undated(viewer)).size();
+        List<Task> undated = tasks.find(TaskQuery.undated(viewer));
+        Map<Long, Member> byId =
+                families.roster(viewer).stream()
+                        .collect(Collectors.toMap(Member::id, Function.identity()));
 
-        byte[] png = CalendarRenderer.render(dated, zone, today, days);
-        sender.sendPhoto(
-                request.chatId(), png, "calendar-" + days + ".png", AgendaView.caption(days, undated));
+        byte[] html =
+                asList
+                        ? CalendarHtmlRenderer.renderList(dated, undated, byId, zone, today, days)
+                        : CalendarHtmlRenderer.render(dated, undated, byId, zone, today, days);
+        sender.sendDocument(
+                request.chatId(),
+                html,
+                // ⚠️ горизонт в имени обязателен: под одним именем телефон открывает ранее
+                // скачанный файл, и неделя показывается вчерашним днём. Сервер при этом отдаёт
+                // правильный документ, поэтому проверка содержимого такое не ловит
+                "schedule-" + (asList ? "list" : "grid") + "-" + days + "d-" + today + ".html",
+                AgendaView.caption(days, 0));
     }
 
     private void show(BotRequest request, Member viewer, int days, boolean rewrite) {

@@ -9,61 +9,64 @@ import static org.mockito.Mockito.when;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.methods.send.SendDocument;
 import org.telegram.telegrambots.meta.api.objects.ApiResponse;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiRequestException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 /**
- * Календарь уходит фотографией, а не документом.
+ * Расписание страницей уходит документом — в отличие от картинки.
  *
- * <p>Документ в Telegram показывается карточкой файла: чтобы посмотреть картинку, её надо скачать.
- * Обзорный режим, ради которого всё и рисовалось, при этом теряет смысл.
+ * <p>Разница не в капризе: фотографию Telegram показывает прямо в ленте, и документ там был бы
+ * карточкой файла. С HTML наоборот — показывать в ленте нечего, его надо открыть, а для этого он и
+ * должен приехать файлом.
  */
-class BotSenderPhotoTest {
+class BotSenderDocumentTest {
 
-    private static final byte[] PNG = "не-настоящий-png".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] HTML =
+            "<!doctype html><html></html>".getBytes(StandardCharsets.UTF_8);
 
     private final TelegramClient client = mock(TelegramClient.class);
     private final BotSender sender = new BotSender(client);
 
     @Test
-    void photoIsSentAsAPhotoWithACaption() throws TelegramApiException {
-        sender.sendPhoto(4426L, PNG, "calendar.png", "Расписание на 7 дней");
+    void documentIsSentWithItsFileNameAndCaption() throws TelegramApiException {
+        sender.sendDocument(4426L, HTML, "schedule-2026-08-08.html", "Расписание на 7 дней");
 
-        ArgumentCaptor<SendPhoto> sent = ArgumentCaptor.forClass(SendPhoto.class);
+        ArgumentCaptor<SendDocument> sent = ArgumentCaptor.forClass(SendDocument.class);
         verify(client).execute(sent.capture());
         assertThat(sent.getValue().getChatId()).isEqualTo("4426");
         assertThat(sent.getValue().getCaption()).isEqualTo("Расписание на 7 дней");
-        assertThat(sent.getValue().getPhoto().getMediaName()).isEqualTo("calendar.png");
+        assertThat(sent.getValue().getDocument().getMediaName())
+                .isEqualTo("schedule-2026-08-08.html");
     }
 
     /** Подпись размечена так же, как остальные сообщения бота. */
     @Test
     void captionUsesHtml() throws TelegramApiException {
-        sender.sendPhoto(4426L, PNG, "calendar.png", "<b>Неделя</b>");
+        sender.sendDocument(4426L, HTML, "schedule.html", "<b>Неделя</b>");
 
-        ArgumentCaptor<SendPhoto> sent = ArgumentCaptor.forClass(SendPhoto.class);
+        ArgumentCaptor<SendDocument> sent = ArgumentCaptor.forClass(SendDocument.class);
         verify(client).execute(sent.capture());
         assertThat(sent.getValue().getParseMode()).isEqualTo("HTML");
     }
 
     @Test
     void blockedRecipientIsReportedAsUnreachable() throws TelegramApiException {
-        when(client.execute(any(SendPhoto.class)))
+        when(client.execute(any(SendDocument.class)))
                 .thenThrow(new TelegramApiRequestException("forbidden", apiError(403)));
 
-        assertThat(sender.sendPhoto(4426L, PNG, "calendar.png", "неважно")).isFalse();
+        assertThat(sender.sendDocument(4426L, HTML, "schedule.html", "неважно")).isFalse();
     }
 
     /** Сеть моргнула — не повод считать получателя недостижимым навсегда. */
     @Test
-    void transientFailureIsNotTreatedAsBlocked() throws TelegramApiException {
-        when(client.execute(any(SendPhoto.class)))
+    void aTemporaryFailureIsNotUnreachable() throws TelegramApiException {
+        when(client.execute(any(SendDocument.class)))
                 .thenThrow(new TelegramApiRequestException("bad gateway", apiError(502)));
 
-        assertThat(sender.sendPhoto(4426L, PNG, "calendar.png", "неважно")).isTrue();
+        assertThat(sender.sendDocument(4426L, HTML, "schedule.html", "неважно")).isTrue();
     }
 
     private static ApiResponse<?> apiError(int code) {

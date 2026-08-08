@@ -51,8 +51,30 @@ public class UpdateRouter {
         this.sender = sender;
         this.dialogs = dialogHandlers;
         commandHandlers.forEach(
-                handler -> handler.commands().forEach(name -> commands.put(name, handler)));
-        callbackHandlers.forEach(handler -> callbacks.put(handler.prefix(), handler));
+                handler -> handler.commands().forEach(name -> register(commands, name, handler)));
+        callbackHandlers.forEach(handler -> register(callbacks, handler.prefix(), handler));
+    }
+
+    /**
+     * ⚠️ Совпавший ключ обязан ронять сборку контекста, а не вытеснять предыдущий обработчик.
+     *
+     * <p>{@code Map.put} затирает молча: команда или целый экран переставали бы работать без единой
+     * строки в журнале и без ошибки сборки, а кто именно выиграл — зависело бы от порядка бинов.
+     * Находка в этом случае приходит только жалобой «кнопка ничего не делает».
+     *
+     * <p>В сообщении лишь ключ и классы: имена обработчиков — не пользовательские данные, а ключ
+     * это буква из кода.
+     */
+    private static <H> void register(Map<String, H> registry, String key, H handler) {
+        H previous = registry.put(key, handler);
+        if (previous != null) {
+            throw new IllegalStateException(
+                    "two handlers claim '%s': %s and %s"
+                            .formatted(
+                                    key,
+                                    previous.getClass().getSimpleName(),
+                                    handler.getClass().getSimpleName()));
+        }
     }
 
     public void route(Update update) {

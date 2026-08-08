@@ -29,8 +29,22 @@ public final class AgendaView {
     public static final String PREFIX = "a";
     public static final String DAYS = "days";
 
-    /** Календарь картинкой. Обзорный режим: кнопок на самой картинке нет и быть не может. */
-    public static final String PICTURE = "pic";
+    /**
+     * Расписание списком — тем же HTML-файлом, но без сетки.
+     *
+     * <p>Занял место картинки. У сетки день упирается в ось и её границы, у списка границ нет
+     * вовсе; какой вид удобнее, зависит от дня и от человека, поэтому выбирает он.
+     */
+    public static final String LIST = "list";
+
+    /**
+     * Расписание страницей — HTML-файлом.
+     *
+     * <p>Второй вид рядом с картинкой, а не вместо неё: картинка обзорнее и открывается в один тап,
+     * страница подробнее и листается. Какой из них удобнее на настоящем телефоне, решает не спор, а
+     * пользование.
+     */
+    public static final String PAGE = "page";
 
     /** Горизонты из макетов. */
     public static final List<Integer> HORIZONS = List.of(1, 3, 7, 30);
@@ -106,14 +120,20 @@ public final class AgendaView {
         }
         rows.add(horizons);
 
-        InlineKeyboardRow picture = new InlineKeyboardRow();
-        picture.add(
+        InlineKeyboardRow views = new InlineKeyboardRow();
+        views.add(
                 InlineKeyboardButton.builder()
-                        .text("Картинкой")
+                        .text("Сеткой")
                         .callbackData(
-                                new CallbackData(PREFIX, PICTURE, Integer.toString(days)).serialize())
+                                new CallbackData(PREFIX, PAGE, Integer.toString(days)).serialize())
                         .build());
-        rows.add(picture);
+        views.add(
+                InlineKeyboardButton.builder()
+                        .text("Списком")
+                        .callbackData(
+                                new CallbackData(PREFIX, LIST, Integer.toString(days)).serialize())
+                        .build());
+        rows.add(views);
 
         InlineKeyboardRow row = new InlineKeyboardRow();
         for (int i = 0; i < shown.size(); i++) {

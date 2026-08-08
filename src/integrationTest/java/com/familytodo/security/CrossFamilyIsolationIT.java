@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.familytodo.adapter.persistence.JdbcFamilyRepository;
 import com.familytodo.adapter.persistence.JdbcIdSequence;
 import com.familytodo.adapter.persistence.JdbcMemberRepository;
+import com.familytodo.adapter.persistence.JdbcShoppingRepository;
 import com.familytodo.adapter.persistence.JdbcTaskRepository;
+import com.familytodo.application.ShoppingService;
 import com.familytodo.application.TaskQuery;
 import com.familytodo.application.TaskService;
 import com.familytodo.support.NoOpNotifier;
@@ -14,6 +16,7 @@ import com.familytodo.domain.DomainException;
 import com.familytodo.domain.Family;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Role;
+import com.familytodo.domain.ShoppingList;
 import com.familytodo.domain.Task;
 import com.familytodo.domain.TaskStatus;
 import com.familytodo.persistence.AbstractSqliteIT;
@@ -43,6 +46,7 @@ class CrossFamilyIsolationIT extends AbstractSqliteIT {
     private JdbcTaskRepository taskRepository;
     private JdbcMemberRepository memberRepository;
     private TaskService service;
+    private ShoppingService shopping;
 
     private Member momA;
     private Member kidA;
@@ -61,6 +65,10 @@ class CrossFamilyIsolationIT extends AbstractSqliteIT {
                         taskRepository,
                         memberRepository,
                         new NoOpNotifier(),
+                        Clock.fixed(NOW, ZoneOffset.UTC));
+        shopping =
+                new ShoppingService(
+                        new JdbcShoppingRepository(jdbc, sequence),
                         Clock.fixed(NOW, ZoneOffset.UTC));
 
         Family familyA =
@@ -144,6 +152,51 @@ class CrossFamilyIsolationIT extends AbstractSqliteIT {
                 .isInstanceOf(DomainException.NotPermitted.class);
         assertStillOpen();
         assertThat(service.find(TaskQuery.visibleTo(otherKidA))).isEmpty();
+    }
+
+    // --- списки покупок ---
+
+    @Test
+    void strangerCannotToggleForeignShoppingItem() {
+        long id = shopping.add(momA, ShoppingList.FOOD, "Молоко").getFirst().id();
+
+        assertThatThrownBy(() -> shopping.toggle(momB, id))
+                .isInstanceOf(DomainException.NotFound.class);
+
+        assertThat(shopping.items(momA, ShoppingList.FOOD).getFirst().isBought()).isFalse();
+    }
+
+    @Test
+    void foreignShoppingListNeverAppears() {
+        shopping.add(momA, ShoppingList.FOOD, "Молоко");
+        shopping.add(momA, ShoppingList.HOUSEHOLD, "Мыло");
+
+        assertThat(shopping.items(momB, ShoppingList.FOOD)).isEmpty();
+        assertThat(shopping.items(momB, ShoppingList.HOUSEHOLD)).isEmpty();
+    }
+
+    @Test
+    void strangerCannotClearForeignList() {
+        long id = shopping.add(momA, ShoppingList.FOOD, "Молоко").getFirst().id();
+        shopping.toggle(momA, id);
+
+        assertThat(shopping.clearBought(momB, ShoppingList.FOOD)).isZero();
+        assertThat(shopping.items(momA, ShoppingList.FOOD)).hasSize(1);
+    }
+
+    /**
+     * Сознательное исключение, закреплённое поведением: список покупок общий.
+     *
+     * <p>У задач посторонний ребёнок той же семьи получает отказ и пустой список — см. {@link
+     * #uninvolvedChildOfTheSameFamilyIsDenied()}. Здесь наоборот, и это не послабление изоляции, а
+     * другое правило видимости: изоляция по семье остаётся ровно такой же строгой.
+     */
+    @Test
+    void anyChildOfTheSameFamilySeesAndTicksTheSharedList() {
+        long id = shopping.add(momA, ShoppingList.FOOD, "Молоко").getFirst().id();
+
+        assertThat(shopping.items(otherKidA, ShoppingList.FOOD)).hasSize(1);
+        assertThat(shopping.toggle(otherKidA, id).isBought()).isTrue();
     }
 
     private void assertStillOpen() {

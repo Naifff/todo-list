@@ -13,6 +13,12 @@ import java.time.Instant;
  */
 public final class Member {
 
+    /**
+     * Имя показывается в списках, карточках и календаре. Длиннее — и строка списка перестаёт
+     * читаться, а на кнопке остаётся многоточие.
+     */
+    public static final int MAX_NAME = 40;
+
     private final long id;
     private final long familyId;
     private final long telegramUserId;
@@ -24,6 +30,9 @@ public final class Member {
     private MemberStatus status;
     private boolean blockedBot;
 
+    /** Цвет, которым рисуются дела этого человека в расписании. */
+    private MemberColor color;
+
     private Member(
             long id,
             long familyId,
@@ -33,6 +42,7 @@ public final class Member {
             Role role,
             MemberStatus status,
             boolean blockedBot,
+            MemberColor color,
             Instant createdAt) {
         this.id = id;
         this.familyId = familyId;
@@ -42,6 +52,7 @@ public final class Member {
         this.role = requireRole(role);
         this.status = status;
         this.blockedBot = blockedBot;
+        this.color = color == null ? MemberColor.forMember(id) : color;
         this.createdAt = createdAt;
     }
 
@@ -62,6 +73,7 @@ public final class Member {
                 role,
                 MemberStatus.ACTIVE,
                 false,
+                MemberColor.forMember(id),
                 createdAt);
     }
 
@@ -74,6 +86,7 @@ public final class Member {
             Role role,
             MemberStatus status,
             boolean blockedBot,
+            MemberColor color,
             Instant createdAt) {
         return new Member(
                 id,
@@ -84,6 +97,7 @@ public final class Member {
                 role,
                 status,
                 blockedBot,
+                color,
                 createdAt);
     }
 
@@ -114,6 +128,25 @@ public final class Member {
             throw new DomainException.NotPermitted("member belongs to another family");
         }
         this.status = MemberStatus.REMOVED;
+    }
+
+    void renameBy(Family family, String newDisplayName) {
+        requireSameFamily(family);
+        this.displayName = requireDisplayName(newDisplayName);
+    }
+
+    void recolorBy(Family family, MemberColor newColor) {
+        requireSameFamily(family);
+        if (newColor == null) {
+            throw new IllegalArgumentException("color is required");
+        }
+        this.color = newColor;
+    }
+
+    private void requireSameFamily(Family family) {
+        if (family.id() != familyId) {
+            throw new DomainException.NotPermitted("member belongs to another family");
+        }
     }
 
     void changeRoleBy(Family family, Role newRole) {
@@ -172,6 +205,10 @@ public final class Member {
         return privateChatId;
     }
 
+    public MemberColor color() {
+        return color;
+    }
+
     public String displayName() {
         return displayName;
     }
@@ -196,7 +233,11 @@ public final class Member {
         if (displayName == null || displayName.isBlank()) {
             throw new IllegalArgumentException("display name is required");
         }
-        return displayName;
+        String trimmed = displayName.strip();
+        if (trimmed.length() > MAX_NAME) {
+            throw new IllegalArgumentException("display name is longer than " + MAX_NAME);
+        }
+        return trimmed;
     }
 
     private static Role requireRole(Role role) {

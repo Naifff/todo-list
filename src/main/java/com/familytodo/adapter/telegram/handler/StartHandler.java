@@ -21,6 +21,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -43,17 +44,28 @@ public class StartHandler implements CommandHandler, CallbackHandler, DialogHand
     private final DialogStateStore dialogs;
     private final BotSender sender;
 
+    /**
+     * Принимает ли бот новые семьи.
+     *
+     * <p>По умолчанию <b>нет</b>, и это направление выбрано намеренно: забытая настройка не должна
+     * молча открывать регистрацию посторонним. Выключатель закрывает создание семьи, но не вход по
+     * приглашению — иначе он отрезал бы и тех, кому ссылку уже прислали.
+     */
+    private final boolean familyCreationEnabled;
+
     public StartHandler(
             FamilyService families,
             InviteService invites,
             MemberRepository members,
             DialogStateStore dialogs,
-            BotSender sender) {
+            BotSender sender,
+            @Value("${family.creation-enabled:false}") boolean familyCreationEnabled) {
         this.families = families;
         this.invites = invites;
         this.members = members;
         this.dialogs = dialogs;
         this.sender = sender;
+        this.familyCreationEnabled = familyCreationEnabled;
     }
 
     @Override
@@ -86,9 +98,11 @@ public class StartHandler implements CommandHandler, CallbackHandler, DialogHand
         Optional<String> code = request.commandArgument().flatMap(StartHandler::inviteCode);
         if (code.isPresent()) {
             redeem(request, code.get());
-        } else {
+        } else if (familyCreationEnabled) {
             dialogs.put(request.telegramUserId(), new DialogState.AwaitingFamilyName());
             sender.send(request.chatId(), Texts.ASK_FAMILY_NAME);
+        } else {
+            sender.send(request.chatId(), Texts.FAMILY_CREATION_CLOSED);
         }
     }
 
