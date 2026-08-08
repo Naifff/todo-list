@@ -328,6 +328,20 @@ class CalendarHtmlRendererTest {
             assertThat(html).contains(">05<").contains("Рано");
         }
 
+        /**
+         * ⚠️ Ось подписывает и закрывающий час.
+         *
+         * <p>Подписи по умолчанию идут 07..19, потому что подписывается начало часа. Строка до
+         * 20:00 при этом есть, но день читается как обрезанный на семи вечера — на это и пожаловались
+         * с телефона.
+         */
+        @Test
+        void theAxisLabelsItsClosingHour() {
+            String html = render(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 1);
+
+            assertThat(html).contains(">20<");
+        }
+
         /** Широкая сетка листается внутри себя, а не растягивает страницу. */
         @Test
         void aWideGridScrollsInsideItsOwnContainer() {
@@ -358,6 +372,106 @@ class CalendarHtmlRendererTest {
             String html = render(List.of(), List.of(), 30);
 
             assertThat(html).contains("Пн").contains("Вс");
+        }
+    }
+
+    /**
+     * Второй вид того же файла — список, форма из {@code docs/л*.pdf}.
+     *
+     * <p>Он занял место картинки: у сетки день упирается в ось и её границы, у списка границ нет
+     * вовсе. Выбирает человек, а не мы.
+     */
+    @Nested
+    class ListView {
+
+        @Test
+        void listHasNoHourAxisAndNoGrid() {
+            String html = renderList(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 1);
+
+            assertThat(html).doesNotContain("class=\"hours\"").doesNotContain("class=\"grid\"");
+            assertThat(html).contains("Школа");
+        }
+
+        @Test
+        void everyDayOfTheWindowGetsItsHeadingIncludingEmptyOnes() {
+            String html = renderList(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 3);
+
+            assertThat(countOf(html, "<h2>")).isEqualTo(3);
+            assertThat(html).contains("свободно");
+        }
+
+        @Test
+        void itemsOfADayGoInTimeOrder() {
+            String html =
+                    renderList(
+                            List.of(
+                                    scheduled("Утро", MONDAY, 8, 0, 8, 40),
+                                    scheduled("Ночь", MONDAY, 22, 40, 23, 30),
+                                    withDueDate("Вечер", MONDAY, 19, 0)),
+                            List.of(),
+                            1);
+
+            assertThat(html.indexOf("Утро")).isLessThan(html.indexOf("Вечер"));
+            assertThat(html.indexOf("Вечер")).isLessThan(html.indexOf("Ночь"));
+        }
+
+        @Test
+        void listCarriesWhatTheGridCarries() {
+            Task declined =
+                    task(
+                            "Забрать детей",
+                            null,
+                            MONDAY.atStartOfDay(MOSCOW).plusHours(16).toInstant(),
+                            MONDAY.atStartOfDay(MOSCOW).plusHours(17).toInstant(),
+                            "садик",
+                            TaskStatus.DECLINED,
+                            "я на работе до восьми");
+
+            String html = renderList(List.of(declined), List.of(), 1);
+
+            assertThat(html).contains("садик").contains("Петя").contains("я на работе до восьми");
+        }
+
+        @Test
+        void aNightTaskAppearsInBothDays() {
+            Task sleep =
+                    task(
+                            "Спать",
+                            null,
+                            MONDAY.atStartOfDay(MOSCOW).plusHours(22).plusMinutes(40).toInstant(),
+                            MONDAY.plusDays(1).atStartOfDay(MOSCOW).plusHours(8).toInstant(),
+                            "кровать",
+                            TaskStatus.OPEN,
+                            null);
+
+            assertThat(countOf(renderList(List.of(sleep), List.of(), 2), "Спать")).isEqualTo(2);
+        }
+
+        @Test
+        void undatedTasksGetTheirOwnBlock() {
+            String html = renderList(List.of(), List.of(withDueDate("Купить хлеб", null, 0, 0)), 1);
+
+            assertThat(html).contains("Купить хлеб").contains("Без даты");
+        }
+
+        /** Экранирование общее с сеткой, но проверяется и здесь: это отдельный вывод. */
+        @Test
+        void aTitleThatLooksLikeAScriptStaysText() {
+            String html =
+                    renderList(
+                            List.of(scheduled("<script>alert(1)</script>", MONDAY, 8, 0, 8, 40)),
+                            List.of(),
+                            1);
+
+            assertThat(html).doesNotContain("<script>alert(1)</script>");
+            assertThat(html).contains("&lt;script&gt;");
+        }
+
+        @Test
+        void aMonthHorizonIsAListTooWithoutAMonthGrid() {
+            String html = renderList(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 30);
+
+            assertThat(html).doesNotContain("class=\"month\"").contains("Школа");
         }
     }
 
@@ -445,6 +559,12 @@ class CalendarHtmlRendererTest {
     private String render(List<Task> dated, List<Task> undated, int days) {
         return new String(
                 CalendarHtmlRenderer.render(dated, undated, roster, MOSCOW, MONDAY, days),
+                StandardCharsets.UTF_8);
+    }
+
+    private String renderList(List<Task> dated, List<Task> undated, int days) {
+        return new String(
+                CalendarHtmlRenderer.renderList(dated, undated, roster, MOSCOW, MONDAY, days),
                 StandardCharsets.UTF_8);
     }
 

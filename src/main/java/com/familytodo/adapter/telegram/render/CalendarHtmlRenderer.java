@@ -58,6 +58,7 @@ public final class CalendarHtmlRenderer {
 
     private CalendarHtmlRenderer() {}
 
+    /** Сетка: ось часов до недели, месячная сетка дальше. */
     public static byte[] render(
             List<Task> dated,
             List<Task> undated,
@@ -66,20 +67,8 @@ public final class CalendarHtmlRenderer {
             LocalDate from,
             int days) {
 
-        StringBuilder html = new StringBuilder(8192);
-        html.append("<!doctype html>\n<html lang=\"ru\">\n<head>\n")
-                .append("<meta charset=\"utf-8\">\n")
-                .append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
-                .append("<title>Расписание</title>\n")
-                .append(style())
-                .append("</head>\n<body>\n");
-
-        List<LocalDate> columns = new ArrayList<>(days);
-        for (int i = 0; i < days; i++) {
-            columns.add(from.plusDays(i));
-        }
-
-        html.append("<h1>").append(periodTitle(columns)).append("</h1>\n");
+        StringBuilder html = open(from, days);
+        List<LocalDate> columns = columns(from, days);
 
         if (days > MAX_DAYS_ON_AXIS) {
             appendMonth(html, dated, zone, from, days);
@@ -87,10 +76,93 @@ public final class CalendarHtmlRenderer {
             appendTimeGrid(html, dated, byId, zone, columns);
         }
 
-        appendUndated(html, undated, byId);
+        return close(html, undated, byId);
+    }
 
+    /**
+     * Список: день, под ним дела по времени. Форма из {@code docs/л*.pdf}.
+     *
+     * <p>Занял место картинки. У сетки день упирается в ось и её границы, у списка границ нет
+     * вовсе — а какой вид удобнее, зависит от дня и от человека, и выбирает он.
+     */
+    public static byte[] renderList(
+            List<Task> dated,
+            List<Task> undated,
+            Map<Long, Member> byId,
+            ZoneId zone,
+            LocalDate from,
+            int days) {
+
+        StringBuilder html = open(from, days);
+        List<LocalDate> columns = columns(from, days);
+        Map<LocalDate, List<Entry>> byDay = group(dated, zone, columns);
+
+        for (LocalDate day : columns) {
+            html.append("<section class=\"day\">\n<h2>")
+                    .append(dayHeading(day, from))
+                    .append("</h2>\n");
+
+            List<Entry> entries = byDay.get(day);
+            if (entries == null || entries.isEmpty()) {
+                // пустой день показываем явно: иначе непонятно, свободен он или потерялся
+                html.append("<p class=\"empty\">свободно</p>\n</section>\n");
+                continue;
+            }
+            for (Entry entry : entries) {
+                Task task = entry.task();
+                html.append("<div class=\"loose ")
+                        .append(statusClass(task.status()))
+                        .append("\">\n<div class=\"time\">")
+                        .append(entry.when())
+                        .append("</div>\n<div class=\"title\">")
+                        .append(escape(task.title()))
+                        .append("</div>\n");
+                appendDetails(html, task, byId);
+                html.append("</div>\n");
+            }
+            html.append("</section>\n");
+        }
+
+        return close(html, undated, byId);
+    }
+
+    private static List<LocalDate> columns(LocalDate from, int days) {
+        List<LocalDate> columns = new ArrayList<>(days);
+        for (int i = 0; i < days; i++) {
+            columns.add(from.plusDays(i));
+        }
+        return columns;
+    }
+
+    private static StringBuilder open(LocalDate from, int days) {
+        StringBuilder html = new StringBuilder(8192);
+        html.append("<!doctype html>\n<html lang=\"ru\">\n<head>\n")
+                .append("<meta charset=\"utf-8\">\n")
+                .append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
+                .append("<title>Расписание</title>\n")
+                .append(style())
+                .append("</head>\n<body>\n")
+                .append("<h1>")
+                .append(periodTitle(columns(from, days)))
+                .append("</h1>\n");
+        return html;
+    }
+
+    private static byte[] close(StringBuilder html, List<Task> undated, Map<Long, Member> byId) {
+        appendUndated(html, undated, byId);
         html.append("</body>\n</html>\n");
         return html.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static String dayHeading(LocalDate day, LocalDate today) {
+        String weekday = day.getDayOfWeek().getDisplayName(TextStyle.FULL, RU);
+        String prefix = "";
+        if (day.equals(today)) {
+            prefix = "сегодня, ";
+        } else if (day.equals(today.plusDays(1))) {
+            prefix = "завтра, ";
+        }
+        return escape(prefix + day.format(DATE) + ", " + weekday);
     }
 
     // --- сетка с осью времени: 1..7 дней ---
@@ -137,7 +209,12 @@ public final class CalendarHtmlRenderer {
                     .append("%02d".formatted(hour % 24))
                     .append("</div>\n");
         }
-        html.append("</div>\n");
+        // ⚠️ закрывающий час подписывается отдельно. Подписи метят начало часа, поэтому без
+        // него ось по умолчанию кончалась на «19», строка до 20:00 при этом была, а день
+        // читался как обрезанный на семи вечера
+        html.append("<div class=\"hour end\">")
+                .append("%02d".formatted(toHour % 24))
+                .append("</div>\n</div>\n");
 
         for (LocalDate day : columns) {
             html.append("<div class=\"col\">\n");
@@ -462,6 +539,13 @@ public final class CalendarHtmlRenderer {
                  padding: 0 5px;
                  font-variant-numeric: tabular-nums;
                }
+               .hours { position: relative; }
+               .hour.end {
+                 position: absolute;
+                 bottom: 0;
+                 right: 5px;
+                 height: auto;
+               }
                .col { position: relative; border-left: 1px solid var(--line); }
                .slot {
                  height: var(--hour);
@@ -510,6 +594,13 @@ public final class CalendarHtmlRenderer {
                }
                .chip.done, .chip.declined { background: var(--muted); }
                .at { font-variant-numeric: tabular-nums; opacity: .85; }
+               .day { margin-bottom: 18px; }
+               h2 {
+                 padding-bottom: 5px;
+                 border-bottom: 1px solid var(--line);
+               }
+               .empty { margin: 0; color: var(--muted); font-size: 13px; }
+               .loose .time { color: var(--muted); font-size: 12px; }
                .undated { margin-top: 18px; }
                .loose {
                  border-left: 3px solid var(--accent);

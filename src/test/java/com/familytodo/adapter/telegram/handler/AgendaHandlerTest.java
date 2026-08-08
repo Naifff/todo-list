@@ -279,7 +279,6 @@ class AgendaHandlerTest {
             handler.handle(callback(mom), page(1));
 
             assertThat(sender.documents).hasSize(1);
-            assertThat(sender.photos).isEmpty();
             assertThat(sender.texts).isEmpty();
             assertThat(sender.documents.getFirst().png()).isNotEmpty();
         }
@@ -357,96 +356,61 @@ class AgendaHandlerTest {
             sender.markups.getFirst()
                     .getKeyboard()
                     .forEach(row -> row.forEach(button -> labels.add(button.getText())));
-            assertThat(labels).contains("Картинкой", "Страницей");
+            assertThat(labels).contains("Сеткой", "Списком");
         }
     }
 
+    /**
+     * Второй вид того же файла — списком. Занял место картинки: у сетки день упирается в ось и её
+     * границы, у списка границ нет вовсе, и выбирает человек.
+     */
     @Nested
-    class Picture {
+    class ListPage {
 
         @Test
-        void pictureButtonSendsAPhotoNotAMessage() {
+        void listButtonSendsADocument() {
             task("Сегодняшнее", "2026-08-07T16:00:00Z");
             sender.clear();
 
-            handler.handle(callback(mom), picture(1));
+            handler.handle(callback(mom), list(1));
 
-            assertThat(sender.photos).hasSize(1);
-            assertThat(sender.texts).isEmpty();
-            assertThat(sender.photos.getFirst().png()).isNotEmpty();
-        }
-
-        /** Картинка — вложение, у неё должно быть имя файла с расширением. */
-        @Test
-        void photoIsNamedAsAPng() {
-            handler.handle(callback(mom), picture(7));
-
-            assertThat(sender.photos.getFirst().fileName()).endsWith(".png");
+            assertThat(sender.documents).hasSize(1);
         }
 
         @Test
-        void captionNamesTheHorizon() {
-            handler.handle(callback(mom), picture(7));
-
-            assertThat(sender.photos.getFirst().caption()).contains("неделя");
-        }
-
-        /**
-         * Дел без даты на календаре нет — им негде быть на оси времени. Молча их потерять нельзя:
-         * человек решит, что список пуст.
-         */
-        @Test
-        void captionSaysHowManyUndatedTasksAreNotShown() {
-            tasks.create(mom, kid.id(), "Когда-нибудь разобрать гараж", null);
-            tasks.create(mom, kid.id(), "И почистить чердак", null);
-            sender.clear();
-
-            handler.handle(callback(mom), picture(1));
-
-            assertThat(sender.photos.getFirst().caption()).contains("2 дела без даты");
-        }
-
-        @Test
-        void captionSaysNothingAboutUndatedWhenThereAreNone() {
+        void theTwoViewsAreDifferentFilesAndDifferentShapes() {
             task("Сегодняшнее", "2026-08-07T16:00:00Z");
             sender.clear();
 
-            handler.handle(callback(mom), picture(1));
+            handler.handle(callback(mom), page(1));
+            handler.handle(callback(mom), list(1));
 
-            assertThat(sender.photos.getFirst().caption()).doesNotContain("без даты");
+            assertThat(sender.documents.get(0).fileName())
+                    .isNotEqualTo(sender.documents.get(1).fileName());
+            assertThat(
+                            new String(
+                                    sender.documents.get(1).png(),
+                                    java.nio.charset.StandardCharsets.UTF_8))
+                    .doesNotContain("class=\"hours\"");
         }
 
-        /** Горизонт приходит от клиента и проверяется так же, как у списка. */
         @Test
         void forgedHorizonIsRejected() {
-            assertThatThrownBy(() -> handler.handle(callback(mom), picture(365)))
+            assertThatThrownBy(() -> handler.handle(callback(mom), list(365)))
                     .isInstanceOf(IllegalArgumentException.class);
-            assertThat(sender.photos).isEmpty();
+            assertThat(sender.documents).isEmpty();
         }
 
         @Test
         void everyHorizonRenders() {
             for (int days : AgendaView.HORIZONS) {
                 sender.clear();
-                handler.handle(callback(mom), picture(days));
-                assertThat(sender.photos).describedAs("горизонт %d", days).hasSize(1);
+                handler.handle(callback(mom), list(days));
+                assertThat(sender.documents).hasSize(1);
             }
         }
-
-        @Test
-        void keyboardOffersThePictureButton() {
-            handler.handle(command(mom));
-
-            assertThat(labels(sender.markups.getFirst())).contains("Картинкой");
-        }
-
-        private List<String> labels(InlineKeyboardMarkup markup) {
-            return markup.getKeyboard().stream()
-                    .flatMap(row -> row.stream())
-                    .map(button -> button.getText())
-                    .toList();
-        }
     }
+
 
     // --- вспомогательное ---
 
@@ -454,8 +418,8 @@ class AgendaHandlerTest {
         return tasks.create(mom, kid.id(), title, Instant.parse(dueAt));
     }
 
-    private static CallbackData picture(int days) {
-        return new CallbackData(AgendaView.PREFIX, AgendaView.PICTURE, Integer.toString(days));
+    private static CallbackData list(int days) {
+        return new CallbackData(AgendaView.PREFIX, AgendaView.LIST, Integer.toString(days));
     }
 
     private static CallbackData page(int days) {
@@ -492,7 +456,6 @@ class AgendaHandlerTest {
         private final List<String> texts = new ArrayList<>();
         private final List<String> edits = new ArrayList<>();
         private final List<InlineKeyboardMarkup> markups = new ArrayList<>();
-        private final List<Photo> photos = new ArrayList<>();
         private final List<Photo> documents = new ArrayList<>();
 
         record Photo(byte[] png, String fileName, String caption) {}
@@ -521,12 +484,6 @@ class AgendaHandlerTest {
         }
 
         @Override
-        public boolean sendPhoto(long chatId, byte[] png, String fileName, String caption) {
-            photos.add(new Photo(png, fileName, caption));
-            return true;
-        }
-
-        @Override
         public boolean sendDocument(long chatId, byte[] bytes, String fileName, String caption) {
             documents.add(new Photo(bytes, fileName, caption));
             return true;
@@ -536,7 +493,6 @@ class AgendaHandlerTest {
             texts.clear();
             edits.clear();
             markups.clear();
-            photos.clear();
             documents.clear();
         }
     }
