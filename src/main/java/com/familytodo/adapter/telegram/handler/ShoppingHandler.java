@@ -123,17 +123,16 @@ public class ShoppingHandler implements CommandHandler, CallbackHandler, DialogH
         }
 
         dialogs.clear(request.telegramUserId());
-        redraw(request.chatId(), step.messageId(), request.requireMember(), step.list());
+        // ⚠️ новым сообщением, а не правкой исходного. Между списком и ответом человека
+        // вклиниваются подсказка и его собственный текст, поэтому старое сообщение уезжает
+        // вверх: правка меняла его за экраном, и добавление выглядело как «ничего не
+        // произошло». Старый список при первом же нажатии перерисуется сам
+        send(request, request.requireMember(), step.list());
         return true;
     }
 
     private void askForItems(BotRequest request, ShoppingList list) {
-        dialogs.put(
-                request.telegramUserId(),
-                new DialogState.AwaitingShoppingItems(
-                        list,
-                        request.messageId()
-                                .orElseThrow(() -> new IllegalStateException("no message to edit"))));
+        dialogs.put(request.telegramUserId(), new DialogState.AwaitingShoppingItems(list));
         sender.send(request.chatId(), Texts.SHOP_ASK_ITEMS);
     }
 
@@ -153,18 +152,14 @@ public class ShoppingHandler implements CommandHandler, CallbackHandler, DialogH
 
     /** Список живёт одним сообщением: нажатие переписывает его, а не добавляет ещё одно. */
     private void edit(BotRequest request, Member member, ShoppingList list) {
-        redraw(
+        List<ShoppingItem> items = shopping.items(member, list);
+        ShoppingView.Rendered rendered = ShoppingView.render(list, items);
+        sender.edit(
                 request.chatId(),
                 request.messageId()
                         .orElseThrow(() -> new IllegalStateException("no message to edit")),
-                member,
-                list);
-    }
-
-    private void redraw(long chatId, int messageId, Member member, ShoppingList list) {
-        List<ShoppingItem> items = shopping.items(member, list);
-        ShoppingView.Rendered rendered = ShoppingView.render(list, items);
-        sender.edit(chatId, messageId, rendered.text(), ShoppingView.keyboard(list, items, rendered.shown()));
+                rendered.text(),
+                ShoppingView.keyboard(list, items, rendered.shown()));
     }
 
     /** Название списка приходит от клиента, поэтому разбирается строго. */
