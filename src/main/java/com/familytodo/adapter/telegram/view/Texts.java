@@ -23,6 +23,20 @@ public final class Texts {
 
     public static final String ALREADY_CLOSED = "Задача уже закрыта.";
 
+    // --- списки покупок ---
+
+    public static final String SHOP_FOOD_HEADER = "🍎 <b>Продукты</b>";
+
+    public static final String SHOP_HOUSEHOLD_HEADER = "🧴 <b>Хозяйство</b>";
+
+    public static final String SHOP_EMPTY = "Пока пусто.";
+
+    public static final String SHOP_TRUNCATED = "Показаны первые 30 позиций.";
+
+    public static final String SHOP_SWITCH_TO_FOOD = "🍎 Продукты";
+
+    public static final String SHOP_SWITCH_TO_HOUSEHOLD = "🧴 Хозяйство";
+
     // --- онбординг ---
 
     public static final String ASK_FAMILY_NAME =
@@ -59,6 +73,7 @@ public final class Texts {
 
             /new — попросить кого-то о деле
             /agenda — расписание на день, 3 дня, неделю, месяц
+            /shop — списки покупок: продукты и хозяйство
             /my — что просили у меня
             /assigned — что я попросил у других
             /all — все дела семьи (только для родителей)
