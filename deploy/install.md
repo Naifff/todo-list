@@ -174,6 +174,44 @@ systemctl start family-todo-backup.service   # проверить сразу, а
 отработал, а не что снимок годен. Проверять разворачиванием — распаковать копию во
 временный файл и спросить у неё `integrity_check` и число строк.
 
+### История памяти
+
+```bash
+cp deploy/memlog.sh /usr/local/bin/family-todo-memlog
+chmod 755 /usr/local/bin/family-todo-memlog
+
+cat > /etc/systemd/system/family-todo-memlog.service <<'EOF'
+[Unit]
+Description=Family todo: one line of memory history
+After=family-todo.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/family-todo-memlog
+EOF
+
+cat > /etc/systemd/system/family-todo-memlog.timer <<'EOF'
+[Unit]
+Description=Family todo: daily memory history
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now family-todo-memlog.timer
+```
+
+Одна строка в сутки в `/var/lib/family-todo/memory.log`. Это не мониторинг, а история:
+снимок памяти отвечает «сколько сейчас», но не отвечает «растёт ли», а отличить медленную
+утечку от обычного прогрева можно только по ряду точек. Полноценная система метрик на машине
+с чужим VPN несоразмерна задаче.
+
 Восстановление:
 
 ```bash
