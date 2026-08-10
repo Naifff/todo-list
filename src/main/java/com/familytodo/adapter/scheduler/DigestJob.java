@@ -111,20 +111,24 @@ public class DigestJob {
     /**
      * Что попадает в утренний список.
      *
-     * <p>Горизонт ограничивает только <b>вперёд</b>. Назад его нет: просроченное с ростом срока не
-     * становится менее важным, а дела без даты не с чем сравнивать — «купить хлеб» не обещано ни на
-     * какой день, но из семейного списка от этого не исчезает.
+     * <p>Окно — от начала сегодняшнего дня до горизонта. Дела без даты не с чем сравнивать: «купить
+     * хлеб» не обещано ни на какой день, но из списка от этого не исчезает.
      */
     private List<Task> withinHorizon(
             Member recipient, Family family, Instant now, int days, boolean includeUndated) {
-        Instant until =
-                family.today(now).plusDays(days).atStartOfDay(family.timezone()).toInstant();
+        LocalDate today = family.today(now);
+        // ⚠️ окно начинается с сегодняшнего утра, а не «от начала времён». Событие, которое
+        // прошло, сделать уже нельзя: вчерашнее «отпраздновать день рождения» приходило сегодня
+        // утром и выглядело поломкой. Просроченное осталось в /my и в истории
+        Instant since = today.atStartOfDay(family.timezone()).toInstant();
+        Instant until = today.plusDays(days).atStartOfDay(family.timezone()).toInstant();
 
-        List<Task> visible = new ArrayList<>(tasks.find(TaskQuery.inRange(recipient, null, until)));
+        List<Task> visible =
+                new ArrayList<>(tasks.find(TaskQuery.digestFor(recipient, since, until)));
         if (includeUndated) {
             // ⚠️ только в дневной: иначе «купить хлеб» приходит дважды за одно утро, и человек
             // перестаёт читать оба списка
-            visible.addAll(tasks.find(TaskQuery.undated(recipient)));
+            visible.addAll(tasks.find(TaskQuery.undatedFor(recipient)));
         }
         return visible;
     }

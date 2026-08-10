@@ -38,6 +38,18 @@ public final class AgendaView {
     public static final String LIST = "list";
 
     /**
+     * История — то же расписание, но назад.
+     *
+     * <p>Отдельным действием, а не отрицательным горизонтом: «минус семь» в {@code callback_data}
+     * пришлось бы разбирать и проверять на каждом шаге, а смысл у выборки другой — там все статусы,
+     * здесь только открытые.
+     */
+    public static final String PAST = "past";
+
+    /** Назад заглядывают неделей или месяцем; день истории — это «вчера», за ним не ходят. */
+    public static final List<Integer> PAST_HORIZONS = List.of(7, 30);
+
+    /**
      * Расписание страницей — HTML-файлом.
      *
      * <p>Второй вид рядом с картинкой, а не вместо неё: картинка обзорнее и открывается в один тап,
@@ -135,6 +147,18 @@ public final class AgendaView {
                         .build());
         rows.add(views);
 
+        InlineKeyboardRow history = new InlineKeyboardRow();
+        for (int horizon : PAST_HORIZONS) {
+            history.add(
+                    InlineKeyboardButton.builder()
+                            .text(horizon == 7 ? "← Было за неделю" : "← Было за месяц")
+                            .callbackData(
+                                    new CallbackData(PREFIX, PAST, Integer.toString(horizon))
+                                            .serialize())
+                            .build());
+        }
+        rows.add(history);
+
         InlineKeyboardRow row = new InlineKeyboardRow();
         for (int i = 0; i < shown.size(); i++) {
             row.add(
@@ -229,6 +253,10 @@ public final class AgendaView {
      * Подпись к картинке. Дел без даты на календаре нет — им негде быть на оси времени, — и
      * умолчать об этом нельзя: человек решит, что у него их не осталось.
      */
+    public static String historyCaption(int days) {
+        return "<b>Что было за " + (days == 7 ? "неделю" : "месяц") + "</b>";
+    }
+
     public static String caption(int days, int undated) {
         String caption = "<b>" + header(days) + "</b>";
         return undated == 0 ? caption : caption + "\n" + undated + " " + undatedWord(undated) + " без даты — в списке";
