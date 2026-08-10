@@ -66,13 +66,20 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
     public void handle(BotRequest request, CallbackData data) {
         boolean grid = AgendaView.PAGE.equals(data.action());
         boolean list = AgendaView.LIST.equals(data.action());
-        if (!grid && !list && !AgendaView.DAYS.equals(data.action())) {
+        boolean past = AgendaView.PAST.equals(data.action());
+        if (!grid && !list && !past && !AgendaView.DAYS.equals(data.action())) {
             return;
         }
         int days = (int) data.longArgument();
         // горизонт приходит от клиента: чужое число не должно превращаться в запрос на год
-        if (!AgendaView.HORIZONS.contains(days)) {
+        List<Integer> allowed = past ? AgendaView.PAST_HORIZONS : AgendaView.HORIZONS;
+        if (!allowed.contains(days)) {
             throw new IllegalArgumentException("unsupported horizon " + days);
+        }
+
+        if (past) {
+            sendHistory(request, request.requireMember(), days);
+            return;
         }
         if (grid || list) {
             sendPage(request, request.requireMember(), days, list);
@@ -111,6 +118,31 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
                 // правильный документ, поэтому проверка содержимого такое не ловит
                 "schedule-" + (asList ? "list" : "grid") + "-" + days + "d-" + today + ".html",
                 AgendaView.caption(days, 0));
+    }
+
+    /**
+     * История — списком, а не сеткой: за месяц сетка нечитаема, а вопрос к истории обычно «что
+     * было», а не «во сколько».
+     */
+    private void sendHistory(BotRequest request, Member viewer, int days) {
+        ZoneId zone = families.family(viewer).timezone();
+        LocalDate today = LocalDate.ofInstant(clock.instant(), zone);
+        LocalDate from = today.minusDays(days);
+
+        Instant since = from.atStartOfDay(zone).toInstant();
+        Instant until = today.atStartOfDay(zone).toInstant();
+
+        List<Task> past = tasks.find(TaskQuery.history(viewer, since, until));
+        Map<Long, Member> byId =
+                families.roster(viewer).stream()
+                        .collect(Collectors.toMap(Member::id, Function.identity()));
+
+        byte[] html = CalendarHtmlRenderer.renderList(past, List.of(), byId, zone, from, days);
+        sender.sendDocument(
+                request.chatId(),
+                html,
+                "history-" + days + "d-" + today + ".html",
+                AgendaView.historyCaption(days));
     }
 
     private void show(BotRequest request, Member viewer, int days, boolean rewrite) {

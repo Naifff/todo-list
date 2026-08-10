@@ -91,6 +91,43 @@ public record TaskQuery(
     }
 
     /**
+     * История: дела за прошедшее окно, <b>во всех статусах</b>.
+     *
+     * <p>Видимость та же, что у календаря вперёд: родитель видит всю семью, ребёнок — только своё.
+     * А вот статусы — все: история из одних открытых дел бессмысленна, интересно как раз то, что
+     * сделали и от чего отказались.
+     */
+    public static TaskQuery history(Member viewer, Instant from, Instant to) {
+        return new TaskQuery(
+                viewer.familyId(),
+                visibilityLimit(viewer),
+                null,
+                null,
+                java.util.EnumSet.allOf(TaskStatus.class),
+                from,
+                to,
+                false);
+    }
+
+    /**
+     * Что попадает в утренний список получателя.
+     *
+     * <p>⚠️ Правило видимости задач здесь <b>не</b> применяется. Оно отвечает на вопрос «что мне
+     * можно увидеть», а дайджест отвечает на другой — «что мне сегодня делать»: родителю приходили
+     * бы дела детей вперемешку со своими. Поэтому выборка строго по исполнителю.
+     */
+    public static TaskQuery digestFor(Member recipient, Instant from, Instant to) {
+        return new TaskQuery(
+                recipient.familyId(), null, recipient.id(), null, OPEN_ONLY, from, to, false);
+    }
+
+    /** Дела без срока — тоже персональные. */
+    public static TaskQuery undatedFor(Member recipient) {
+        return new TaskQuery(
+                recipient.familyId(), null, recipient.id(), null, OPEN_ONLY, null, null, true);
+    }
+
+    /**
      * Дела без срока и без интервала.
      *
      * <p>Отдельной выборкой, а не приписанные к сегодня: «когда-нибудь разобрать шкаф» не обещано

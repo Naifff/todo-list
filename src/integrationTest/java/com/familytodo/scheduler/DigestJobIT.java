@@ -162,6 +162,70 @@ class DigestJobIT extends AbstractSqliteIT {
      * из семейного списка от этого не исчезает.
      */
     /**
+     * Дайджест персональный: в нём только то, что поручено получателю.
+     *
+     * <p>Правило видимости задач тут не годится: родитель видит весь семейный список, и утром ему
+     * приходили дела детей вперемешку со своими. «Что мне сегодня делать» — вопрос про себя.
+     */
+    @Nested
+    class Personal {
+
+        private static final Instant DIGEST_MOMENT = Instant.parse("2026-08-07T05:00:00Z");
+
+        @Test
+        void aTaskCreatedForSomeoneElseReachesOnlyTheAssignee() {
+            Family family = family("Румянцевы", MOSCOW);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            Member kid = join(family, 512034877L, "Петя", Role.CHILD);
+            tasks.save(
+                    Task.create(
+                            tasks.nextId(),
+                            family.id(),
+                            "Сделать уроки",
+                            mom.id(),
+                            new Assignee(kid.id(), kid.role()),
+                            Instant.parse("2026-08-07T16:00:00Z"),
+                            clock.instant()));
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.countFor(mom.id())).describedAs("автору не приходит").isZero();
+            assertThat(notifier.sizeFor(kid.id(), 1)).isEqualTo(1);
+        }
+
+        @Test
+        void aParentGetsTheirOwnTasksOnly() {
+            Family family = family("Румянцевы", MOSCOW);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            Member dad = join(family, 512034878L, "Папа", Role.PARENT);
+            dated(family, mom, "Моё", "2026-08-07T16:00:00Z");
+            dated(family, dad, "Папино", "2026-08-07T17:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.sizeFor(mom.id(), 1)).isEqualTo(1);
+            assertThat(notifier.sizeFor(dad.id(), 1)).isEqualTo(1);
+        }
+
+        /** Дела без даты тоже персональные. */
+        @Test
+        void undatedTasksAreAlsoPersonal() {
+            Family family = family("Румянцевы", MOSCOW);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            Member kid = join(family, 512034877L, "Петя", Role.CHILD);
+            undated(family, kid, "Разобрать шкаф");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.countFor(mom.id())).isZero();
+            assertThat(notifier.sizeFor(kid.id(), 1)).isEqualTo(1);
+        }
+    }
+
+    /**
      * Два дайджеста каждое утро: на сегодня и на неделю.
      *
      * <p>Дневной отвечает «что сегодня», недельный — «к чему готовиться». Один список на неделю
@@ -296,11 +360,33 @@ class DigestJobIT extends AbstractSqliteIT {
             assertThat(notifier.sizeFor(mom.id(), 30)).isEqualTo(2);
         }
 
+        /**
+         * ⚠️ Прошедшее в дайджест не идёт.
+         *
+         * <p>Раньше горизонт ограничивал список только вперёд, и вчерашнее «отпраздновать день
+         * рождения» приходило сегодня утром. Событие, которое прошло, сделать уже нельзя, а
+         * утренний список — про то, что предстоит. Просроченное никуда не делось: оно в {@code /my}
+         * и в истории.
+         */
         @Test
-        void overdueIsInTheDigestAtEveryHorizon() {
+        void yesterdaysTaskIsNotInTodaysDigest() {
             Family family = family("Румянцевы", MOSCOW);
             Member mom = join(family, 100000001L, "Мама", Role.PARENT);
-            dated(family, mom, "Просрочено на два дня", "2026-08-05T16:00:00Z");
+            dated(family, mom, "Отпраздновать день рождения", "2026-08-06T16:00:00Z");
+            dated(family, mom, "Сегодняшнее", "2026-08-07T16:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.sizeFor(mom.id())).isEqualTo(1);
+        }
+
+        /** Дело сегодняшнего утра, к которому уже опоздали, из сегодняшнего списка не исчезает. */
+        @Test
+        void aTaskEarlierTodayIsStillInTodaysDigest() {
+            Family family = family("Румянцевы", MOSCOW);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            dated(family, mom, "Было в семь утра", "2026-08-07T04:00:00Z");
 
             clock.set(DIGEST_MOMENT);
             job.run();
@@ -380,7 +466,7 @@ class DigestJobIT extends AbstractSqliteIT {
                     .isEqualTo(LocalDate.of(2026, 8, 7));
         }
 
-        /** Список персональный: ребёнок не должен увидеть дела родителей. */
+        /** Список персональный у всех: каждому только то, что поручено ему. */
         @Test
         void childSeesOnlyTheirOwn() {
             Family family = family("Румянцевы", MOSCOW);
@@ -392,8 +478,8 @@ class DigestJobIT extends AbstractSqliteIT {
             clock.set(Instant.parse("2026-08-07T05:00:00Z"));
             job.run();
 
-            // дела без даты живут в дневном дайджесте
-            assertThat(notifier.sizeFor(mom.id(), 1)).isEqualTo(2);
+            // дела без даты живут в дневном дайджесте; у мамы своё одно, второе поручено Пете
+            assertThat(notifier.sizeFor(mom.id(), 1)).isEqualTo(1);
             assertThat(notifier.sizeFor(kid.id(), 1)).isEqualTo(1);
         }
 

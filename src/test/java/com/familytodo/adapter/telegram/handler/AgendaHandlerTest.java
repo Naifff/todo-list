@@ -475,6 +475,104 @@ class AgendaHandlerTest {
     }
 
 
+    /**
+     * История: то же расписание, но назад.
+     *
+     * <p>Видимость та же, что у календаря вперёд: родитель видит всю семью, ребёнок — только своё.
+     * Статусы, наоборот, все: история из одних открытых дел бессмысленна — интересно как раз то,
+     * что сделали и от чего отказались.
+     */
+    @Nested
+    class History {
+
+        @Test
+        void thePastButtonSendsADocumentCoveringPreviousDays() {
+            task("Вчерашнее", "2026-08-06T16:00:00Z");
+            sender.clear();
+
+            handler.handle(callback(mom), past(7));
+
+            assertThat(sender.documents).hasSize(1);
+            assertThat(document(0)).contains("Вчерашнее");
+        }
+
+        @Test
+        void todayAndTheFutureAreNotInTheHistory() {
+            task("Вчерашнее", "2026-08-06T16:00:00Z");
+            task("Сегодняшнее", "2026-08-07T16:00:00Z");
+            task("Завтрашнее", "2026-08-08T16:00:00Z");
+            sender.clear();
+
+            handler.handle(callback(mom), past(7));
+
+            assertThat(document(0)).contains("Вчерашнее").doesNotContain("Завтрашнее");
+        }
+
+        /** Ради этого история и нужна: увидеть, что было сделано и от чего отказались. */
+        @Test
+        void closedTasksAreInTheHistory() {
+            var done = tasks.create(mom, mom.id(), "Уже сделано", Instant.parse("2026-08-06T16:00:00Z"));
+            tasks.complete(mom, done.id());
+            sender.clear();
+
+            handler.handle(callback(mom), past(7));
+
+            assertThat(document(0)).contains("Уже сделано");
+        }
+
+        @Test
+        void aChildSeesOnlyTheirOwnHistory() {
+            tasks.create(mom, mom.id(), "Мамино вчерашнее", Instant.parse("2026-08-06T16:00:00Z"));
+            tasks.create(mom, kid.id(), "Петино вчерашнее", Instant.parse("2026-08-06T17:00:00Z"));
+            sender.clear();
+
+            handler.handle(callback(kid), past(7));
+
+            assertThat(document(0)).contains("Петино вчерашнее").doesNotContain("Мамино вчерашнее");
+        }
+
+        @Test
+        void aParentSeesTheWholeFamilyHistory() {
+            tasks.create(mom, kid.id(), "Петино вчерашнее", Instant.parse("2026-08-06T17:00:00Z"));
+            sender.clear();
+
+            handler.handle(callback(mom), past(7));
+
+            assertThat(document(0)).contains("Петино вчерашнее");
+        }
+
+        /** Горизонт назад приходит от клиента и проверяется так же, как вперёд. */
+        @Test
+        void aForgedHorizonIsRejected() {
+            assertThatThrownBy(() -> handler.handle(callback(mom), past(365)))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        void theFileNameSaysItIsHistory() {
+            handler.handle(callback(mom), past(30));
+
+            assertThat(sender.documents.getFirst().fileName()).contains("history").contains("30d");
+        }
+
+        @Test
+        void theKeyboardOffersHistory() {
+            handler.handle(command(mom));
+
+            List<String> labels = new ArrayList<>();
+            sender.markups
+                    .getFirst()
+                    .getKeyboard()
+                    .forEach(row -> row.forEach(button -> labels.add(button.getText())));
+            assertThat(labels).anyMatch(label -> label.contains("Было"));
+        }
+
+        private String document(int index) {
+            return new String(
+                    sender.documents.get(index).png(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+    }
+
     // --- вспомогательное ---
 
     private Task task(String title, String dueAt) {
@@ -491,6 +589,10 @@ class AgendaHandlerTest {
             count++;
         }
         return count;
+    }
+
+    private static CallbackData past(int days) {
+        return new CallbackData(AgendaView.PREFIX, AgendaView.PAST, Integer.toString(days));
     }
 
     private static CallbackData page(int days) {
