@@ -123,10 +123,10 @@ class NewTaskHandlerTest {
             boolean handled = handler.continueDialog(text(mom, "Вынести мусор"));
 
             assertThat(handled).isTrue();
-            assertThat(sender.texts).containsExactly(Texts.ASK_ASSIGNEE);
+            assertThat(sender.texts).containsExactly(Texts.ASK_ASSIGNEES);
             assertThat(sender.markups).hasSize(1);
             assertThat(dialogs.get(mom.telegramUserId()))
-                    .contains(new DialogState.AwaitingAssignee("Вынести мусор"));
+                    .contains(new DialogState.ChoosingAssignees("Вынести мусор", List.of()));
         }
 
         @Test
@@ -134,7 +134,7 @@ class NewTaskHandlerTest {
             startAndName(mom, "Вынести мусор");
             sender.clear();
 
-            handler.handle(callback(mom), assignee(kid.id()));
+            pickOne(mom, kid);
 
             assertThat(sender.texts).containsExactly(Texts.ASK_DUE);
             assertThat(dialogs.get(mom.telegramUserId()))
@@ -144,7 +144,7 @@ class NewTaskHandlerTest {
         @Test
         void wholeDialogCreatesTheTaskAndNotifiesAssignee() {
             startAndName(mom, "Вынести мусор");
-            handler.handle(callback(mom), assignee(kid.id()));
+            pickOne(mom, kid);
             sender.clear();
             notifier.clear();
 
@@ -165,7 +165,7 @@ class NewTaskHandlerTest {
         @Test
         void withoutDueDateTheTaskHasNone() {
             startAndName(mom, "Разобрать шкаф");
-            handler.handle(callback(mom), assignee(kid.id()));
+            pickOne(mom, kid);
 
             handler.handle(callback(mom), due(NewTaskKeyboards.NONE));
 
@@ -176,7 +176,7 @@ class NewTaskHandlerTest {
         @Test
         void childMayAssignToParent() {
             startAndName(kid, "Купить корм коту");
-            handler.handle(callback(kid), assignee(mom.id()));
+            pickOne(kid, mom);
 
             handler.handle(callback(kid), due(NewTaskKeyboards.TODAY));
             handler.handle(callback(kid), repeat(NewTaskKeyboards.ONCE));
@@ -190,7 +190,7 @@ class NewTaskHandlerTest {
         @Test
         void assigningToSelfSendsNoNotification() {
             startAndName(mom, "Позвонить в поликлинику");
-            handler.handle(callback(mom), assignee(mom.id()));
+            pickOne(mom, mom);
             notifier.clear();
 
             handler.handle(callback(mom), due(NewTaskKeyboards.TODAY));
@@ -204,9 +204,12 @@ class NewTaskHandlerTest {
     /**
      * Дело сразу на нескольких.
      *
-     * <p>Отдельная ветка, а не мультивыбор с самого начала: тап по имени по-прежнему выбирает
-     * одного и ведёт дальше. Лишнее «Готово» на каждом деле ради редкого случая — плохой размен, и
-     * {@link Assignee#singleTapStillPicksOne} это стережёт.
+     * <p>⚠️ Экран выбора — мультивыбор <b>всегда</b>, и это исправление, а не первоначальный
+     * замысел. Сначала тап по имени выбирал одного и сразу вёл дальше, а несколько выбирались
+     * отдельной кнопкой под именами — так экономилось нажатие на частом случае. С телефона это
+     * не сработало ни разу: естественный жест — ткнуть в имя, он случается раньше, чем кнопку
+     * замечают, а после него добавить второго уже негде. Одно лишнее нажатие дешевле, чем
+     * недостижимая возможность.
      */
     @Nested
     class SeveralAssignees {
@@ -214,7 +217,6 @@ class NewTaskHandlerTest {
         @Test
         void pickingTwoAndPressingDoneGoesOnToTheDeadline() {
             startAndName(mom, "Отвезти Наифа к врачу");
-            handler.handle(callback(mom), many());
             sender.clear();
 
             handler.handle(callback(mom), toggleAssignee(mom.id()));
@@ -231,7 +233,6 @@ class NewTaskHandlerTest {
         @Test
         void bothPeopleEndUpOnTheTask() {
             startAndName(mom, "Отвезти Наифа к врачу");
-            handler.handle(callback(mom), many());
             handler.handle(callback(mom), toggleAssignee(mom.id()));
             handler.handle(callback(mom), toggleAssignee(dad.id()));
             handler.handle(callback(mom), assigneesDone());
@@ -248,7 +249,6 @@ class NewTaskHandlerTest {
         @Test
         void everyoneButTheAuthorIsNotified() {
             startAndName(mom, "Отвезти Наифа к врачу");
-            handler.handle(callback(mom), many());
             handler.handle(callback(mom), toggleAssignee(mom.id()));
             handler.handle(callback(mom), toggleAssignee(dad.id()));
             handler.handle(callback(mom), toggleAssignee(kid.id()));
@@ -266,7 +266,6 @@ class NewTaskHandlerTest {
         @Test
         void tappingTheSameNameTwiceUnticksIt() {
             startAndName(mom, "Отвезти Наифа к врачу");
-            handler.handle(callback(mom), many());
 
             handler.handle(callback(mom), toggleAssignee(dad.id()));
             handler.handle(callback(mom), toggleAssignee(dad.id()));
@@ -280,12 +279,11 @@ class NewTaskHandlerTest {
         @Test
         void pressingDoneWithNobodyTickedKeepsThePicker() {
             startAndName(mom, "Отвезти Наифа к врачу");
-            handler.handle(callback(mom), many());
             sender.clear();
 
             handler.handle(callback(mom), assigneesDone());
 
-            assertThat(sender.texts).containsExactly(Texts.PICK_AT_LEAST_ONE_ASSIGNEE);
+            assertThat(sender.edits).containsExactly(Texts.PICK_AT_LEAST_ONE_ASSIGNEE);
             assertThat(dialogs.get(mom.telegramUserId()))
                     .containsInstanceOf(DialogState.ChoosingAssignees.class);
         }
@@ -297,7 +295,6 @@ class NewTaskHandlerTest {
         @Test
         void aSharedTaskSkipsTheRepeatQuestionAndSaysWhy() {
             startAndName(mom, "Отвезти Наифа к врачу");
-            handler.handle(callback(mom), many());
             handler.handle(callback(mom), toggleAssignee(mom.id()));
             handler.handle(callback(mom), toggleAssignee(dad.id()));
             handler.handle(callback(mom), assigneesDone());
@@ -314,15 +311,37 @@ class NewTaskHandlerTest {
             assertThat(dialogs.get(mom.telegramUserId())).isEmpty();
         }
 
-        /** А при одном исполнителе поток прежний — вопрос про повторение на месте. */
+        /** При одном исполнителе всё остальное как прежде — вопрос про повторение на месте. */
         @Test
-        void singleTapStillPicksOne() {
+        void oneAssigneeStillGetsTheRepeatQuestion() {
             startAndName(mom, "Вынести мусор");
 
-            handler.handle(callback(mom), assignee(kid.id()));
+            pickOne(mom, kid);
             handler.handle(callback(mom), due(NewTaskKeyboards.TOMORROW));
 
             assertThat(sender.texts).endsWith(Texts.ASK_REPEAT);
+        }
+
+        /**
+         * ⚠️ Тот самый провал с телефона: отметить одного и на этом закончить было нельзя —
+         * добавить второго после «имя сразу ведёт дальше» уже негде. Теперь экран не уходит,
+         * пока не нажали «Дальше».
+         */
+        @Test
+        void thePickerStaysOnScreenAfterTheFirstName() {
+            startAndName(mom, "Отвезти Наифа к врачу");
+            sender.clear();
+
+            handler.handle(callback(mom), toggleAssignee(mom.id()));
+
+            // перерисовка на месте, а не новое сообщение: иначе создание дела на троих
+            // оставляло бы в чате ленту из пяти одинаковых сообщений
+            assertThat(sender.texts).isEmpty();
+            assertThat(sender.edits).containsExactly(Texts.ASK_ASSIGNEES);
+            assertThat(dialogs.get(mom.telegramUserId()))
+                    .contains(
+                            new DialogState.ChoosingAssignees(
+                                    "Отвезти Наифа к врачу", List.of(mom.id())));
         }
     }
 
@@ -332,7 +351,7 @@ class NewTaskHandlerTest {
         @Test
         void asksForTextAndParsesIt() {
             startAndName(mom, "Забрать посылку");
-            handler.handle(callback(mom), assignee(kid.id()));
+            pickOne(mom, kid);
             handler.handle(callback(mom), due(NewTaskKeyboards.CUSTOM));
             sender.clear();
 
@@ -347,7 +366,7 @@ class NewTaskHandlerTest {
         @Test
         void unparseableInputKeepsTheDialogAlive() {
             startAndName(mom, "Забрать посылку");
-            handler.handle(callback(mom), assignee(kid.id()));
+            pickOne(mom, kid);
             handler.handle(callback(mom), due(NewTaskKeyboards.CUSTOM));
             sender.clear();
 
@@ -392,7 +411,7 @@ class NewTaskHandlerTest {
         /** Потеря состояния допустима — но она не должна выглядеть как поломка. */
         @Test
         void assigneeChoiceWithoutStateOffersToStartOver() {
-            handler.handle(callback(mom), assignee(kid.id()));
+            handler.handle(callback(mom), toggleAssignee(kid.id()));
 
             assertThat(sender.texts).containsExactly(Texts.DIALOG_EXPIRED);
             assertThat(tasks.find(TaskQuery.visibleTo(mom))).isEmpty();
@@ -581,7 +600,7 @@ class NewTaskHandlerTest {
         private void uptoDue() {
             handler.handle(command(mom));
             handler.continueDialog(text(mom, "Вынести мусор"));
-            handler.handle(callback(mom), assignee(kid.id()));
+            pickOne(mom, kid);
             sender.clear();
         }
 
@@ -611,7 +630,7 @@ class NewTaskHandlerTest {
         void buttonIsOfferedInsteadOfCustomDate() {
             handler.handle(command(mom));
             handler.continueDialog(text(mom, "Погулять"));
-            handler.handle(callback(mom), assignee(kid.id()));
+            pickOne(mom, kid);
 
             List<String> labels =
                     sender.markups.getLast().getKeyboard().stream()
@@ -714,7 +733,7 @@ class NewTaskHandlerTest {
         private void uptoSlot() {
             handler.handle(command(mom));
             handler.continueDialog(text(mom, "Погулять"));
-            handler.handle(callback(mom), assignee(kid.id()));
+            pickOne(mom, kid);
             handler.handle(callback(mom), due(NewTaskKeyboards.CUSTOM));
             sender.clear();
         }
@@ -729,12 +748,16 @@ class NewTaskHandlerTest {
         handler.continueDialog(text(member, title));
     }
 
-    private static CallbackData assignee(long memberId) {
-        return CallbackData.of(NewTaskKeyboards.PREFIX, NewTaskKeyboards.ASSIGNEE, memberId);
-    }
-
-    private static CallbackData many() {
-        return new CallbackData(NewTaskKeyboards.PREFIX, NewTaskKeyboards.MANY, "0");
+    /**
+     * Выбрать одного: отметить и нажать «Дальше».
+     *
+     * <p>Два нажатия вместо прежнего одного — цена того, что второго исполнителя видно всегда.
+     * Прежний «тап по имени сразу ведёт дальше» экономил нажатие и делал редкий случай
+     * недостижимым: до кнопки «Нескольким…» под именами дело не доходило.
+     */
+    private void pickOne(Member actor, Member assignee) {
+        handler.handle(callback(actor), toggleAssignee(assignee.id()));
+        handler.handle(callback(actor), assigneesDone());
     }
 
     private static CallbackData toggleAssignee(long memberId) {
@@ -796,6 +819,8 @@ class NewTaskHandlerTest {
     private static final class RecordingSender extends BotSender {
         private final List<String> texts = new ArrayList<>();
         private final List<InlineKeyboardMarkup> markups = new ArrayList<>();
+        /** Отдельно от texts: экран выбора исполнителей перерисовывается на месте, а не шлётся. */
+        private final List<String> edits = new ArrayList<>();
 
         RecordingSender() {
             super(mock(org.telegram.telegrambots.meta.generics.TelegramClient.class));
@@ -814,9 +839,16 @@ class NewTaskHandlerTest {
             return true;
         }
 
+        @Override
+        public void edit(long chatId, int messageId, String html, InlineKeyboardMarkup markup) {
+            edits.add(html);
+            markups.add(markup);
+        }
+
         void clear() {
             texts.clear();
             markups.clear();
+            edits.clear();
         }
     }
 }

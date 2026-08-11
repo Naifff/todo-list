@@ -16,13 +16,11 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 public final class NewTaskKeyboards {
 
     public static final String PREFIX = "n";
-    public static final String ASSIGNEE = "who";
     public static final String DUE = "due";
 
-    /** Мультивыбор исполнителей: открыть, переключить одного, закончить. */
-    public static final String MANY = "many";
-
+    /** Выбор исполнителей: отметить одного, закончить. */
     public static final String TOGGLE_ASSIGNEE = "wtog";
+
     public static final String ASSIGNEES_DONE = "wok";
 
     public static final String TODAY = "today";
@@ -44,54 +42,35 @@ public final class NewTaskKeyboards {
     private NewTaskKeyboards() {}
 
     /**
-     * Себя ставим первым и подписываем «Себе» — самый частый случай не должен требовать поиска
+     * Кто делает: список с отметками. Тап отмечает или снимает, экран остаётся, внизу «Дальше».
+     *
+     * <p>Себя ставим первым и подписываем «Себе» — самый частый случай не должен требовать поиска
      * собственного имени в списке.
+     *
+     * <p>⚠️ Отметки <b>всегда</b>, даже когда исполнитель один, — и это исправление, а не
+     * первоначальный замысел. Сначала тап по имени выбирал одного и сразу вёл дальше, а несколько
+     * выбирались отдельной кнопкой под именами: так экономилось нажатие на частом случае. С
+     * телефона это не сработало ни разу — естественный жест «ткнуть в имя» случается раньше, чем
+     * кнопку замечают, а после него добавить второго уже негде. Одно лишнее нажатие дешевле, чем
+     * возможность, до которой не доходят.
      *
      * <p>Имена участников — пользовательский текст, но в подпись кнопки разметка не попадает:
      * Telegram рисует её как обычный текст. Экранируем всё равно, чтобы вьюха вела себя одинаково.
      */
-    public static InlineKeyboardMarkup assignees(List<Member> family, long selfId) {
+    public static InlineKeyboardMarkup assignees(
+            List<Member> family, long selfId, List<Long> chosen) {
+
         List<InlineKeyboardRow> rows = new ArrayList<>();
-        rows.add(new InlineKeyboardRow(assigneeButton("Себе", selfId)));
+        rows.add(new InlineKeyboardRow(assigneeButton("Себе", selfId, chosen)));
 
         InlineKeyboardRow row = new InlineKeyboardRow();
         for (Member member : family) {
             if (member.id() == selfId) {
                 continue;
             }
-            row.add(assigneeButton(HtmlEscaper.escape(member.displayName()), member.id()));
-            if (row.size() == 2) {
-                rows.add(row);
-                row = new InlineKeyboardRow();
-            }
-        }
-        if (!row.isEmpty()) {
-            rows.add(row);
-        }
-        // отдельной кнопкой, а не мультивыбором сразу: исполнитель почти всегда один,
-        // и лишнее «Готово» на каждом деле ради редкого случая — плохой размен
-        if (family.size() > 1) {
-            rows.add(new InlineKeyboardRow(button("Нескольким…", MANY, "0")));
-        }
-        return InlineKeyboardMarkup.builder().keyboard(rows).build();
-    }
-
-    /**
-     * Мультивыбор: отмеченные видны прямо на кнопках, как и в выборе дней недели.
-     *
-     * <p>Себя тоже показываем по имени, а не «Себе»: в отмеченном списке «Себе» рядом с именами
-     * читается как ещё один человек.
-     */
-    public static InlineKeyboardMarkup someAssignees(List<Member> family, List<Long> chosen) {
-        List<InlineKeyboardRow> rows = new ArrayList<>();
-        InlineKeyboardRow row = new InlineKeyboardRow();
-        for (Member member : family) {
-            String name = HtmlEscaper.escape(member.displayName());
             row.add(
-                    button(
-                            chosen.contains(member.id()) ? "· " + name + " ·" : name,
-                            TOGGLE_ASSIGNEE,
-                            Long.toString(member.id())));
+                    assigneeButton(
+                            HtmlEscaper.escape(member.displayName()), member.id(), chosen));
             if (row.size() == 2) {
                 rows.add(row);
                 row = new InlineKeyboardRow();
@@ -100,7 +79,7 @@ public final class NewTaskKeyboards {
         if (!row.isEmpty()) {
             rows.add(row);
         }
-        rows.add(new InlineKeyboardRow(button("Готово", ASSIGNEES_DONE, "0")));
+        rows.add(new InlineKeyboardRow(button("Дальше ▸", ASSIGNEES_DONE, "0")));
         return InlineKeyboardMarkup.builder().keyboard(rows).build();
     }
 
@@ -159,10 +138,12 @@ public final class NewTaskKeyboards {
                 .build();
     }
 
-    private static InlineKeyboardButton assigneeButton(String label, long memberId) {
+    /** Отмеченные видны прямо на кнопках — как и в выборе дней недели. */
+    private static InlineKeyboardButton assigneeButton(
+            String label, long memberId, List<Long> chosen) {
         return InlineKeyboardButton.builder()
-                .text(label)
-                .callbackData(CallbackData.of(PREFIX, ASSIGNEE, memberId).serialize())
+                .text(chosen.contains(memberId) ? "· " + label + " ·" : label)
+                .callbackData(CallbackData.of(PREFIX, TOGGLE_ASSIGNEE, memberId).serialize())
                 .build();
     }
 

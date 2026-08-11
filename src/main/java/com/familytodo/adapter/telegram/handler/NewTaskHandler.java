@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -108,8 +109,6 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
     @Override
     public void handle(BotRequest request, CallbackData data) {
         switch (data.action()) {
-            case NewTaskKeyboards.ASSIGNEE -> chooseAssignee(request, data);
-            case NewTaskKeyboards.MANY -> openAssigneePicker(request);
             case NewTaskKeyboards.TOGGLE_ASSIGNEE -> toggleAssignee(request, data);
             case NewTaskKeyboards.ASSIGNEES_DONE -> finishAssigneePicker(request);
             case NewTaskKeyboards.DUE -> chooseDue(request, data);
@@ -131,39 +130,14 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         }
 
         Member creator = request.requireMember();
-        dialogs.put(request.telegramUserId(), new DialogState.AwaitingAssignee(title));
-        sender.send(
-                request.chatId(),
-                Texts.ASK_ASSIGNEE,
-                NewTaskKeyboards.assignees(families.roster(creator), creator.id()));
-        return true;
-    }
-
-    private void chooseAssignee(BotRequest request, CallbackData data) {
-        DialogState state = dialogs.get(request.telegramUserId()).orElse(null);
-        if (!(state instanceof DialogState.AwaitingAssignee awaiting)) {
-            expired(request);
-            return;
-        }
-
-        askDue(request, awaiting.title(), List.of(data.longArgument()));
-    }
-
-    private void openAssigneePicker(BotRequest request) {
-        DialogState state = dialogs.get(request.telegramUserId()).orElse(null);
-        if (!(state instanceof DialogState.AwaitingAssignee awaiting)) {
-            expired(request);
-            return;
-        }
-
         dialogs.put(
-                request.telegramUserId(),
-                new DialogState.ChoosingAssignees(awaiting.title(), List.of()));
+                request.telegramUserId(), new DialogState.ChoosingAssignees(title, List.of()));
         sender.send(
                 request.chatId(),
                 Texts.ASK_ASSIGNEES,
-                NewTaskKeyboards.someAssignees(
-                        families.roster(request.requireMember()), List.of()));
+                NewTaskKeyboards.assignees(
+                        families.roster(creator), creator.id(), List.of()));
+        return true;
     }
 
     private void toggleAssignee(BotRequest request, CallbackData data) {
@@ -178,14 +152,26 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
             chosen.add(data.longArgument());
         }
 
+        Member creator = request.requireMember();
         dialogs.put(
                 request.telegramUserId(),
                 new DialogState.ChoosingAssignees(choosing.title(), chosen));
-        sender.send(
-                request.chatId(),
+
+        // перерисовываем на месте, а не новым сообщением: выбор исполнителя теперь на каждом
+        // деле, и сообщение на каждое нажатие превратило бы создание дела в ленту из пяти штук
+        redraw(
+                request,
                 Texts.ASK_ASSIGNEES,
-                NewTaskKeyboards.someAssignees(
-                        families.roster(request.requireMember()), chosen));
+                NewTaskKeyboards.assignees(
+                        families.roster(creator), creator.id(), chosen));
+    }
+
+    /** Правка исходного сообщения; если его нет (так бывает у старых кнопок) — новым. */
+    private void redraw(BotRequest request, String text, InlineKeyboardMarkup markup) {
+        request.messageId()
+                .ifPresentOrElse(
+                        id -> sender.edit(request.chatId(), id, text, markup),
+                        () -> sender.send(request.chatId(), text, markup));
     }
 
     private void finishAssigneePicker(BotRequest request) {
@@ -196,11 +182,12 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         }
         if (choosing.chosen().isEmpty()) {
             // состояние не сбрасываем: человек не передумал, а ещё никого не отметил
-            sender.send(
-                    request.chatId(),
+            Member creator = request.requireMember();
+            redraw(
+                    request,
                     Texts.PICK_AT_LEAST_ONE_ASSIGNEE,
-                    NewTaskKeyboards.someAssignees(
-                            families.roster(request.requireMember()), List.of()));
+                    NewTaskKeyboards.assignees(
+                            families.roster(creator), creator.id(), List.of()));
             return;
         }
 
