@@ -38,13 +38,19 @@ public final class AgendaView {
     public static final String LIST = "list";
 
     /**
-     * История — то же расписание, но назад.
+     * История — то же расписание, но назад: {@code PAST} сеткой, {@code PAST_LIST} списком.
      *
      * <p>Отдельным действием, а не отрицательным горизонтом: «минус семь» в {@code callback_data}
      * пришлось бы разбирать и проверять на каждом шаге, а смысл у выборки другой — там все статусы,
      * здесь только открытые.
+     *
+     * <p>⚠️ Форм стало две. Раньше история приходила только списком: считалось, что за месяц сетка
+     * нечитаема. Это верно про <b>ось часов</b>, но сетка за месяц — не ось, а раскладка неделями,
+     * и она читается прекрасно.
      */
     public static final String PAST = "past";
+
+    public static final String PAST_LIST = "plist";
 
     /** Назад заглядывают неделей или месяцем; день истории — это «вчера», за ним не ходят. */
     public static final List<Integer> PAST_HORIZONS = List.of(7, 30);
@@ -147,17 +153,15 @@ public final class AgendaView {
                         .build());
         rows.add(views);
 
-        InlineKeyboardRow history = new InlineKeyboardRow();
+        // по строке на горизонт: форма выбирается тем же одним нажатием, что и вперёд,
+        // а не отдельным экраном «сеткой или списком?»
         for (int horizon : PAST_HORIZONS) {
-            history.add(
-                    InlineKeyboardButton.builder()
-                            .text(horizon == 7 ? "← Было за неделю" : "← Было за месяц")
-                            .callbackData(
-                                    new CallbackData(PREFIX, PAST, Integer.toString(horizon))
-                                            .serialize())
-                            .build());
+            String name = horizon == 7 ? "← Неделя" : "← Месяц";
+            rows.add(
+                    new InlineKeyboardRow(
+                            pastButton(name + " сеткой", PAST, horizon),
+                            pastButton(name + " списком", PAST_LIST, horizon)));
         }
-        rows.add(history);
 
         InlineKeyboardRow row = new InlineKeyboardRow();
         for (int i = 0; i < shown.size(); i++) {
@@ -253,6 +257,14 @@ public final class AgendaView {
      * Подпись к картинке. Дел без даты на календаре нет — им негде быть на оси времени, — и
      * умолчать об этом нельзя: человек решит, что у него их не осталось.
      */
+    private static InlineKeyboardButton pastButton(String label, String action, int horizon) {
+        return InlineKeyboardButton.builder()
+                .text(label)
+                .callbackData(
+                        new CallbackData(PREFIX, action, Integer.toString(horizon)).serialize())
+                .build();
+    }
+
     public static String historyCaption(int days) {
         return "<b>Что было за " + (days == 7 ? "неделю" : "месяц") + "</b>";
     }
