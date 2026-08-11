@@ -20,8 +20,35 @@ public sealed interface DialogState {
     /** {@code /new}: текст есть, ждём выбора исполнителя кнопкой. */
     record AwaitingAssignee(String title) implements DialogState {}
 
-    /** {@code /new}: исполнитель выбран, ждём срока кнопкой. */
-    record AwaitingDueDate(String title, long assigneeId) implements DialogState {}
+    /**
+     * {@code /new}: нажали «Нескольким» — копим отмеченных, пока не нажмут «Готово».
+     *
+     * <p>Отдельный шаг, а не мультивыбор с самого начала: исполнитель почти всегда один, и лишнее
+     * нажатие «Готово» на каждом деле ради редкого случая — плохой размен.
+     */
+    record ChoosingAssignees(String title, java.util.List<Long> chosen) implements DialogState {
+
+        /**
+         * ⚠️ Список, а не множество. {@code Set.copyOf} порядок <b>не сохраняет</b>: у неизменяемых
+         * множеств JDK итерация зависит от соли, своей на каждый запуск JVM. С множеством порядок
+         * исполнителей — а значит и порядок имён в карточке и в расписании — менялся бы от
+         * перезапуска к перезапуску. Нашлось не рассуждением, а тестом, который упал и прошёл
+         * подряд без единой правки кода.
+         *
+         * <p>Повторы снимает переключатель: одного человека дважды в списке быть не может.
+         */
+        public ChoosingAssignees {
+            chosen = java.util.List.copyOf(chosen);
+        }
+    }
+
+    /** {@code /new}: исполнители выбраны, ждём срока кнопкой. */
+    record AwaitingDueDate(String title, java.util.List<Long> assigneeIds) implements DialogState {
+
+        public AwaitingDueDate {
+            assigneeIds = java.util.List.copyOf(assigneeIds);
+        }
+    }
 
     /**
      * {@code /new}: срок выбран, спрашиваем про повторение.
@@ -30,24 +57,38 @@ public sealed interface DialogState {
      * значило бы добавить шаг ради того, что человек только что назвал.
      */
     record AwaitingRepeat(
-            String title, long assigneeId, com.familytodo.application.DueDateParser.Plan plan)
-            implements DialogState {}
+            String title,
+            java.util.List<Long> assigneeIds,
+            com.familytodo.application.DueDateParser.Plan plan)
+            implements DialogState {
+
+        public AwaitingRepeat {
+            assigneeIds = java.util.List.copyOf(assigneeIds);
+        }
+    }
 
     /** {@code /new}: выбрали «Свои дни» — копим отмеченные, пока не нажмут «Готово». */
     record ChoosingDays(
             String title,
-            long assigneeId,
+            java.util.List<Long> assigneeIds,
             com.familytodo.application.DueDateParser.Plan plan,
             java.util.Set<java.time.DayOfWeek> days)
             implements DialogState {
 
         public ChoosingDays {
+            assigneeIds = java.util.List.copyOf(assigneeIds);
             days = java.util.Set.copyOf(days);
         }
     }
 
     /** {@code /new}: выбрали «Своя дата» — ждём её текстом. */
-    record AwaitingCustomDueDate(String title, long assigneeId) implements DialogState {}
+    record AwaitingCustomDueDate(String title, java.util.List<Long> assigneeIds)
+            implements DialogState {
+
+        public AwaitingCustomDueDate {
+            assigneeIds = java.util.List.copyOf(assigneeIds);
+        }
+    }
 
     /**
      * {@code /shop}: нажали «Добавить» — ждём позиции текстом, по строке на позицию.

@@ -238,25 +238,6 @@ public final class Task {
     }
 
     /**
-     * Передать дело другому — прежние исполнители заменяются одним новым.
-     *
-     * <p>Отличается от {@link #assign}: там круг расширяется, здесь меняется целиком. Обе кнопки
-     * нужны, потому что «пусть сделает папа вместо меня» и «пусть сделаем оба» — разные просьбы.
-     *
-     * @return прежние исполнители — им нужно сообщить, что с них сняли
-     */
-    public List<Assignment> reassign(Actor actor, Assignee newAssignee) {
-        requireEditor(actor);
-        requireOpen();
-        requireAssignee(newAssignee);
-
-        List<Assignment> previous = List.copyOf(assignments);
-        assignments.clear();
-        assignments.add(Assignment.of(newAssignee));
-        return previous;
-    }
-
-    /**
      * Назначить время и место. Право то же, что на правку: расписание задаёт тот, кто просил.
      *
      * <p>Конец без начала бессмыслен, поэтому запрещён. Начало без конца — нет: «в 8 утра» без

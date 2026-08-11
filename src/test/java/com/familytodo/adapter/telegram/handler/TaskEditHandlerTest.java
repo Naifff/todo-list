@@ -22,6 +22,7 @@ import com.familytodo.application.fake.InMemoryFamilyRepository;
 import com.familytodo.application.fake.InMemoryMemberRepository;
 import com.familytodo.application.fake.InMemoryTaskRepository;
 import com.familytodo.domain.DomainException;
+import com.familytodo.domain.Assignment;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Role;
 import com.familytodo.domain.Task;
@@ -161,40 +162,90 @@ class TaskEditHandlerTest {
     @Nested
     class Assignee {
 
-        /** Молча переложить просьбу нельзя: прежний исполнитель продолжит держать её в голове. */
+        /** Ровно то, ради чего фича: дело было на одном, стало на двоих. */
         @Test
-        void bothSidesAreNotified() {
-            Task task = tasks.create(mom, kid.id(), "Вынести мусор", DUE);
+        void tappingAnUncheckedNameAddsThemToTheTask() {
+            Task task = tasks.create(mom, kid.id(), "Отвезти к врачу", DUE);
             handler.handle(callback(mom), edit(TaskEditView.WHO, task.id()));
             notifier.clear();
 
             handler.handle(callback(mom), choice(TaskEditView.SET_WHO, Long.toString(dad.id())));
 
-            assertThat(reload(task).assignments().getFirst().memberId()).isEqualTo(dad.id());
+            assertThat(reload(task).assignments())
+                    .extracting(Assignment::memberId)
+                    .containsExactly(kid.id(), dad.id());
             assertThat(notifier.sent())
                     .extracting(FakeNotifier.Sent::kind, FakeNotifier.Sent::recipientId)
-                    .containsExactlyInAnyOrder(
-                            tuple(Kind.UNASSIGNED, kid.id()), tuple(Kind.ASSIGNED, dad.id()));
+                    .containsExactly(tuple(Kind.ASSIGNED, dad.id()));
         }
 
         @Test
-        void newAssigneeRoleIsPickedUp() {
+        void tappingACheckedNameTakesThemOff() {
+            Task task =
+                    tasks.create(mom, List.of(kid.id(), dad.id()), "Отвезти к врачу", DUE);
+            handler.handle(callback(mom), edit(TaskEditView.WHO, task.id()));
+            notifier.clear();
+
+            handler.handle(callback(mom), choice(TaskEditView.SET_WHO, Long.toString(kid.id())));
+
+            assertThat(reload(task).assignments())
+                    .extracting(Assignment::memberId)
+                    .containsExactly(dad.id());
+            assertThat(notifier.sent())
+                    .extracting(FakeNotifier.Sent::kind, FakeNotifier.Sent::recipientId)
+                    .containsExactly(tuple(Kind.UNASSIGNED, kid.id()));
+        }
+
+        /**
+         * Передать дело другому — два нажатия вместо одного: включить нового, выключить прежнего.
+         *
+         * <p>Уведомления при этом те же, что и раньше: с прежнего сняли, на нового положили. Молча
+         * переложить просьбу по-прежнему нельзя.
+         */
+        @Test
+        void handingTheTaskOverIsTwoTaps() {
+            Task task = tasks.create(mom, kid.id(), "Вынести мусор", DUE);
+            handler.handle(callback(mom), edit(TaskEditView.WHO, task.id()));
+            notifier.clear();
+
+            handler.handle(callback(mom), choice(TaskEditView.SET_WHO, Long.toString(dad.id())));
+            handler.handle(callback(mom), choice(TaskEditView.SET_WHO, Long.toString(kid.id())));
+
+            assertThat(reload(task).assignments())
+                    .extracting(Assignment::memberId)
+                    .containsExactly(dad.id());
+            assertThat(notifier.sent())
+                    .extracting(FakeNotifier.Sent::kind, FakeNotifier.Sent::recipientId)
+                    .containsExactlyInAnyOrder(
+                            tuple(Kind.ASSIGNED, dad.id()), tuple(Kind.UNASSIGNED, kid.id()));
+        }
+
+        @Test
+        void addedAssigneeRoleIsPickedUp() {
             Task task = tasks.create(mom, dad.id(), "Забрать посылку", DUE);
             handler.handle(callback(mom), edit(TaskEditView.WHO, task.id()));
 
             handler.handle(callback(mom), choice(TaskEditView.SET_WHO, Long.toString(kid.id())));
 
-            assertThat(reload(task).assignments().getFirst().role()).isEqualTo(Role.CHILD);
+            assertThat(reload(task).assignments())
+                    .filteredOn(assignment -> assignment.memberId() == kid.id())
+                    .singleElement()
+                    .extracting(Assignment::role)
+                    .isEqualTo(Role.CHILD);
         }
 
+        /** Последнего снять нельзя: дело без исполнителя — не просьба, а запись в никуда. */
         @Test
-        void reassigningToTheSamePersonNotifiesNobody() {
+        void theLastAssigneeCannotBeTappedOff() {
             Task task = tasks.create(mom, kid.id(), "Вынести мусор", DUE);
             handler.handle(callback(mom), edit(TaskEditView.WHO, task.id()));
             notifier.clear();
 
             handler.handle(callback(mom), choice(TaskEditView.SET_WHO, Long.toString(kid.id())));
 
+            assertThat(reload(task).assignments())
+                    .extracting(Assignment::memberId)
+                    .containsExactly(kid.id());
             assertThat(notifier.sent()).isEmpty();
         }
     }
