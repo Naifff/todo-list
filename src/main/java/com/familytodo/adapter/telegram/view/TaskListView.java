@@ -143,9 +143,8 @@ public final class TaskListView {
     private static String who(Task task, Map<Long, Member> byId, Kind kind) {
         return switch (kind) {
             case MINE -> "от " + name(byId, task.creatorId());
-            case REQUESTED -> name(byId, task.assignee().memberId());
-            case ALL ->
-                    name(byId, task.creatorId()) + " → " + name(byId, task.assignee().memberId());
+            case REQUESTED -> AssigneeNames.of(task, byId);
+            case ALL -> name(byId, task.creatorId()) + " → " + AssigneeNames.of(task, byId);
         };
     }
 

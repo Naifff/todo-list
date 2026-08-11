@@ -2,6 +2,7 @@ package com.familytodo.adapter.telegram.view;
 
 import com.familytodo.adapter.telegram.CallbackData;
 import com.familytodo.adapter.telegram.TaskRef;
+import com.familytodo.domain.Assignment;
 import com.familytodo.domain.Actor;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
@@ -38,7 +39,7 @@ public final class TaskCardView {
         out.append("<b>").append(HtmlEscaper.escape(task.title())).append("</b>\n\n");
 
         out.append("Просит: ").append(name(byId, task.creatorId())).append('\n');
-        out.append("Делает: ").append(name(byId, task.assignee().memberId())).append('\n');
+        out.append("Делает: ").append(AssigneeNames.of(task, byId)).append('\n');
         out.append("Срок: ").append(due(task, zone)).append('\n');
         if (task.isScheduled()) {
             out.append("Когда: ").append(slot(task, zone)).append('\n');
@@ -47,10 +48,20 @@ public final class TaskCardView {
             out.append("Где: ").append(HtmlEscaper.escape(task.location())).append('\n');
         }
 
-        if (task.status() == TaskStatus.DECLINED && task.declineReason() != null) {
-            out.append("\nПричина отказа: ")
-                    .append(HtmlEscaper.escape(task.declineReason()))
-                    .append('\n');
+        // Отказы — по людям, а не одной строкой на дело: отказавшихся может быть несколько,
+        // и «причина отказа» без имени при двух исполнителях не отвечает ни на что.
+        // Формулировка безличная намеренно: «отказался» пришлось бы согласовывать с полом,
+        // которого у нас нет, — в Telegram приходит только имя.
+        for (Assignment assignment : task.assignments()) {
+            if (assignment.hasDeclined()) {
+                out.append("\nНе может: ")
+                        .append(AssigneeNames.of(byId, assignment.memberId()))
+                        .append(" — ")
+                        .append(HtmlEscaper.escape(assignment.declineReason()));
+            }
+        }
+        if (AssigneeNames.anyoneDeclined(task)) {
+            out.append('\n');
         }
         return out.toString();
     }

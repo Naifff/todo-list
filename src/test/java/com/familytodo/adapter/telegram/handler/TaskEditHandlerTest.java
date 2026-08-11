@@ -170,7 +170,7 @@ class TaskEditHandlerTest {
 
             handler.handle(callback(mom), choice(TaskEditView.SET_WHO, Long.toString(dad.id())));
 
-            assertThat(reload(task).assignee().memberId()).isEqualTo(dad.id());
+            assertThat(reload(task).assignments().getFirst().memberId()).isEqualTo(dad.id());
             assertThat(notifier.sent())
                     .extracting(FakeNotifier.Sent::kind, FakeNotifier.Sent::recipientId)
                     .containsExactlyInAnyOrder(
@@ -184,7 +184,7 @@ class TaskEditHandlerTest {
 
             handler.handle(callback(mom), choice(TaskEditView.SET_WHO, Long.toString(kid.id())));
 
-            assertThat(reload(task).assignee().role()).isEqualTo(Role.CHILD);
+            assertThat(reload(task).assignments().getFirst().role()).isEqualTo(Role.CHILD);
         }
 
         @Test

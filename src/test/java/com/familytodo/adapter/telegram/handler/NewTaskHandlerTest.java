@@ -141,7 +141,7 @@ class NewTaskHandlerTest {
 
             Task created = tasks.find(TaskQuery.visibleTo(mom)).getFirst();
             assertThat(created.title()).isEqualTo("Вынести мусор");
-            assertThat(created.assignee().memberId()).isEqualTo(kid.id());
+            assertThat(created.assignments().getFirst().memberId()).isEqualTo(kid.id());
             assertThat(created.dueAt()).isEqualTo(Instant.parse("2026-08-08T16:00:00Z"));
             assertThat(notifier.sent())
                     .extracting(FakeNotifier.Sent::kind, FakeNotifier.Sent::recipientId)
@@ -171,7 +171,7 @@ class NewTaskHandlerTest {
 
             Task created = tasks.find(TaskQuery.visibleTo(mom)).getFirst();
             assertThat(created.creatorId()).isEqualTo(kid.id());
-            assertThat(created.assignee().memberId()).isEqualTo(mom.id());
+            assertThat(created.assignments().getFirst().memberId()).isEqualTo(mom.id());
         }
 
         /** «Себе» — значит уже знаешь: уведомление было бы шумом. */

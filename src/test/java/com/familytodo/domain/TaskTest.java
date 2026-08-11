@@ -54,7 +54,7 @@ class TaskTest {
 
         assertThat(task.status()).isEqualTo(TaskStatus.OPEN);
         assertThat(task.closedAt()).isNull();
-        assertThat(task.declineReason()).isNull();
+        assertThat(task.assignments()).noneMatch(Assignment::hasDeclined);
     }
 
     @Nested
@@ -130,7 +130,7 @@ class TaskTest {
             task.decline(child(KID), "я на тренировке", NOW);
 
             assertThat(task.status()).isEqualTo(TaskStatus.DECLINED);
-            assertThat(task.declineReason()).isEqualTo("я на тренировке");
+            assertThat(task.declineReasonOf(KID)).contains("я на тренировке");
             assertThat(task.closedAt()).isEqualTo(NOW);
         }
 
@@ -183,7 +183,7 @@ class TaskTest {
             task.reopen(parent(MOM));
 
             assertThat(task.status()).isEqualTo(TaskStatus.OPEN);
-            assertThat(task.declineReason()).isNull();
+            assertThat(task.assignments()).noneMatch(Assignment::hasDeclined);
         }
 
         /** Переоткрытие — не то же, что закрытие: постороннему родителю оно недоступно. */
@@ -355,7 +355,7 @@ class TaskTest {
             task.cancelBySystem(Actor.system(), "участник исключён из семьи", NOW);
 
             assertThat(task.status()).isEqualTo(TaskStatus.DECLINED);
-            assertThat(task.declineReason()).isEqualTo("участник исключён из семьи");
+            assertThat(task.declineReasonOf(KID)).contains("участник исключён из семьи");
             assertThat(task.closedAt()).isEqualTo(NOW);
         }
 

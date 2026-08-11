@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.familytodo.adapter.persistence.JdbcIdSequence;
 import com.familytodo.adapter.persistence.JdbcTaskRepository;
 import com.familytodo.application.TaskQuery;
+import com.familytodo.domain.Actor;
 import com.familytodo.domain.Assignee;
+import com.familytodo.domain.Assignment;
 import com.familytodo.domain.Role;
 import com.familytodo.domain.Task;
 import com.familytodo.domain.TaskStatus;
@@ -51,12 +53,12 @@ class TaskRepositoryIT extends AbstractSqliteIT {
         assertThat(loaded.title()).isEqualTo("Вынести мусор");
         assertThat(loaded.familyId()).isEqualTo(FAMILY_A);
         assertThat(loaded.creatorId()).isEqualTo(MOM);
-        assertThat(loaded.assignee()).isEqualTo(new Assignee(KID, Role.CHILD));
+        assertThat(loaded.assignments())
+                .containsExactly(new Assignment(KID, Role.CHILD, null, null));
         assertThat(loaded.status()).isEqualTo(TaskStatus.OPEN);
         assertThat(loaded.dueAt()).isEqualTo(DUE);
         assertThat(loaded.createdAt()).isEqualTo(CREATED);
         assertThat(loaded.closedAt()).isNull();
-        assertThat(loaded.declineReason()).isNull();
     }
 
     /** Доли секунды — ровно тот случай, на котором сломалось бы текстовое хранение времени. */
@@ -94,7 +96,7 @@ class TaskRepositoryIT extends AbstractSqliteIT {
         repository.save(open(100L, FAMILY_A, MOM, KID, Role.CHILD));
         jdbc.sql("update member set role = 'PARENT' where id = ?").param(KID).update();
 
-        assertThat(repository.findById(FAMILY_A, 100L).orElseThrow().assignee().role())
+        assertThat(repository.findById(FAMILY_A, 100L).orElseThrow().assignments().getFirst().role())
                 .isEqualTo(Role.PARENT);
     }
 
@@ -290,6 +292,106 @@ class TaskRepositoryIT extends AbstractSqliteIT {
                 new Assignee(KID, Role.CHILD),
                 Instant.parse(dueAt),
                 CREATED);
+    }
+
+    /**
+     * Отказ снимает дело с одного, а не со всех, — и выборка обязана это отражать.
+     *
+     * <p>⚠️ Проверяется на реальном SQL, а не на фейке. Условие «отказавшийся выпадает, пока дело
+     * открыто» живёт внутри {@code exists (...)}, и ошибка в нём выглядела бы как пропавшее дело у
+     * второго исполнителя — то есть ровно как поломка фичи, ради которой всё делалось.
+     */
+    @Test
+    void aRefusalRemovesTheTaskFromOneListButNotFromTheOther() {
+        Task task =
+                repository.save(
+                        Task.create(
+                                100L,
+                                FAMILY_A,
+                                "Отвезти к врачу",
+                                MOM,
+                                List.of(new Assignee(MOM, Role.PARENT), new Assignee(KID, Role.CHILD)),
+                                DUE,
+                                CREATED));
+        task.decline(Actor.member(KID, FAMILY_A, Role.CHILD), "уроки", DUE);
+        repository.save(task);
+
+        assertThat(repository.find(new TaskQuery(FAMILY_A, null, KID, null, OPEN))).isEmpty();
+        assertThat(repository.find(new TaskQuery(FAMILY_A, null, MOM, null, OPEN)))
+                .extracting(Task::id)
+                .containsExactly(100L);
+    }
+
+    /** Видеть своё дело отказавшийся продолжает: «от чего я отказался» — законный вопрос. */
+    @Test
+    void aRefusingChildStillSeesTheTask() {
+        Task task =
+                repository.save(
+                        Task.create(
+                                100L,
+                                FAMILY_A,
+                                "Отвезти к врачу",
+                                MOM,
+                                List.of(new Assignee(MOM, Role.PARENT), new Assignee(KID, Role.CHILD)),
+                                DUE,
+                                CREATED));
+        task.decline(Actor.member(KID, FAMILY_A, Role.CHILD), "уроки", DUE);
+        repository.save(task);
+
+        assertThat(repository.find(new TaskQuery(FAMILY_A, KID, null, null, OPEN)))
+                .extracting(Task::id)
+                .containsExactly(100L);
+    }
+
+    /** Причина отказа лежит у человека, а не у дела: у двоих отказавшихся причины разные. */
+    @Test
+    void everyRefusalKeepsItsOwnReason() {
+        Task task =
+                repository.save(
+                        Task.create(
+                                100L,
+                                FAMILY_A,
+                                "Отвезти к врачу",
+                                MOM,
+                                List.of(new Assignee(MOM, Role.PARENT), new Assignee(KID, Role.CHILD)),
+                                DUE,
+                                CREATED));
+        task.decline(Actor.member(KID, FAMILY_A, Role.CHILD), "уроки", DUE);
+        task.decline(Actor.member(MOM, FAMILY_A, Role.PARENT), "в командировке", DUE);
+        repository.save(task);
+
+        Task loaded = repository.findById(FAMILY_A, 100L).orElseThrow();
+        assertThat(loaded.status()).isEqualTo(TaskStatus.DECLINED);
+        assertThat(loaded.declineReasonOf(KID)).contains("уроки");
+        assertThat(loaded.declineReasonOf(MOM)).contains("в командировке");
+    }
+
+    /**
+     * Снятый исполнитель исчезает из таблицы, а не остаётся висеть.
+     *
+     * <p>⚠️ Сохранение вписывает текущих и <b>потом</b> удаляет лишних. Обратный порядок оставлял бы
+     * дело без единого исполнителя между двумя запросами, а собрать такое из хранилища нельзя вовсе.
+     */
+    @Test
+    void takingSomeoneOffTheTaskRemovesTheirRow() {
+        Task task =
+                repository.save(
+                        Task.create(
+                                100L,
+                                FAMILY_A,
+                                "Отвезти к врачу",
+                                MOM,
+                                List.of(new Assignee(MOM, Role.PARENT), new Assignee(KID, Role.CHILD)),
+                                DUE,
+                                CREATED));
+        task.unassign(Actor.member(MOM, FAMILY_A, Role.PARENT), KID);
+        repository.save(task);
+
+        assertThat(repository.findById(FAMILY_A, 100L).orElseThrow().assignments())
+                .extracting(Assignment::memberId)
+                .containsExactly(MOM);
+        assertThat(jdbc.sql("select count(*) from task_assignee").query(Long.class).single())
+                .isEqualTo(1L);
     }
 
     private static Task open(long id, long familyId, long creator, long assignee, Role role) {

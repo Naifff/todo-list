@@ -117,7 +117,7 @@ class SeriesMaterializationJobIT extends AbstractSqliteIT {
 
             Task first = occurrences().getFirst();
             assertThat(first.title()).isEqualTo("Отвезти детей в школу");
-            assertThat(first.assignee().memberId()).isEqualTo(kid.id());
+            assertThat(first.assignments().getFirst().memberId()).isEqualTo(kid.id());
             assertThat(first.location()).isEqualTo("школа");
             assertThat(first.creatorId()).isEqualTo(mom.id());
         }
@@ -209,19 +209,13 @@ class SeriesMaterializationJobIT extends AbstractSqliteIT {
             int inserted =
                     jdbc.sql(
                                     """
-                                    insert into task (id, family_id, title, creator_id, assignee_id,
+                                    insert into task (id, family_id, title, creator_id,
                                                       status, due_at, created_at, series_id, occurrence_on)
-                                    values (?, ?, 'Дубль', ?, ?, 'OPEN', 0, 0, ?, ?)
+                                    values (?, ?, 'Дубль', ?, 'OPEN', 0, 0, ?, ?)
                                     on conflict (series_id, occurrence_on) where series_id is not null
                                     do nothing
                                     """)
-                            .params(
-                                    9999L,
-                                    family.id(),
-                                    mom.id(),
-                                    kid.id(),
-                                    rule.id(),
-                                    TODAY.toString())
+                            .params(9999L, family.id(), mom.id(), rule.id(), TODAY.toString())
                             .update();
 
             assertThat(inserted).describedAs("вставка отбита индексом").isZero();

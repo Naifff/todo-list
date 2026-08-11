@@ -102,15 +102,28 @@ public class ReminderJob {
         }
     }
 
+    /**
+     * Напоминание уходит каждому, кому дело ещё висит.
+     *
+     * <p>Отказавшиеся исключены: человек уже ответил «не могу», и напоминать ему о том, от чего он
+     * отказался, значит превращать напоминание в укор.
+     */
     private void send(DueReminder reminder) {
         tasks.findById(reminder.familyId(), reminder.taskId())
                 .ifPresent(
                         task ->
-                                members.findById(
-                                                reminder.familyId(),
-                                                task.assignee().memberId())
-                                        .filter(Member::isReachable)
-                                        .ifPresent(recipient -> notify(recipient, task)));
+                                task.activeAssigneeIds()
+                                        .forEach(
+                                                assigneeId ->
+                                                        members.findById(
+                                                                        reminder.familyId(),
+                                                                        assigneeId)
+                                                                .filter(Member::isReachable)
+                                                                .ifPresent(
+                                                                        recipient ->
+                                                                                notify(
+                                                                                        recipient,
+                                                                                        task))));
     }
 
     /**
