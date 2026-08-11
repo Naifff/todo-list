@@ -1,38 +1,69 @@
 package com.familytodo.adapter.persistence;
 
-import com.familytodo.domain.Assignee;
-import com.familytodo.domain.Role;
+import com.familytodo.domain.Assignment;
 import com.familytodo.domain.Task;
 import com.familytodo.domain.TaskStatus;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
+import java.util.List;
 import org.springframework.jdbc.core.RowMapper;
 
 /**
- * Строка → доменная задача.
+ * Строка → заготовка доменной задачи.
  *
- * <p>Отдельной persistence-сущности нет: {@link Task#restore} и есть точка сборки из хранилища.
+ * <p>Отдельной persistence-сущности нет: {@link Task#restore} и есть точка сборки из хранилища. Но
+ * собрать задачу из одной строки больше нельзя — исполнителей у неё несколько, и они лежат в другой
+ * таблице.
  *
- * <p>Роль исполнителя приезжает джойном с {@code member}, а не колонкой в {@code task}. Роль
- * меняется, и её копия в задаче протухала бы: правило «родитель правит задачу, только если
- * исполнитель — ребёнок» проверялось бы по вчерашним данным.
+ * <p>⚠️ Джойном исполнители не тянутся <b>намеренно</b>: он размножил бы строку задачи по числу
+ * назначенных, и любая выборка начала бы отвечать «сколько пар», а не «сколько дел». Назначения
+ * приезжают вторым запросом по списку идентификаторов, см. {@code JdbcTaskRepository}.
  */
-public final class TaskRowMapper implements RowMapper<Task> {
+public final class TaskRowMapper implements RowMapper<TaskRowMapper.TaskRow> {
 
     public static final TaskRowMapper INSTANCE = new TaskRowMapper();
 
+    /** Задача без исполнителей: собрать её в домен можно только вместе с ними. */
+    public record TaskRow(
+            long id,
+            long familyId,
+            String title,
+            long creatorId,
+            TaskStatus status,
+            Instant dueAt,
+            Instant createdAt,
+            Instant closedAt,
+            Instant startsAt,
+            Instant endsAt,
+            String location) {
+
+        public Task toTask(List<Assignment> assignments) {
+            return Task.restore(
+                    id,
+                    familyId,
+                    title,
+                    creatorId,
+                    assignments,
+                    status,
+                    dueAt,
+                    createdAt,
+                    closedAt,
+                    startsAt,
+                    endsAt,
+                    location);
+        }
+    }
+
     @Override
-    public Task mapRow(ResultSet rs, int rowNum) throws SQLException {
-        return Task.restore(
+    public TaskRow mapRow(ResultSet rs, int rowNum) throws SQLException {
+        return new TaskRow(
                 rs.getLong("id"),
                 rs.getLong("family_id"),
                 rs.getString("title"),
                 rs.getLong("creator_id"),
-                new Assignee(
-                        rs.getLong("assignee_id"), Role.valueOf(rs.getString("assignee_role"))),
                 TaskStatus.valueOf(rs.getString("status")),
                 Instants.read(rs, "due_at"),
-                rs.getString("decline_reason"),
                 Instants.read(rs, "created_at"),
                 Instants.read(rs, "closed_at"),
                 Instants.read(rs, "starts_at"),

@@ -204,7 +204,7 @@ class TaskActionHandlerTest {
 
             Task declined = repository.findById(mom.familyId(), task.id()).orElseThrow();
             assertThat(declined.status()).isEqualTo(TaskStatus.DECLINED);
-            assertThat(declined.declineReason()).isEqualTo("я на тренировке");
+            assertThat(declined.declineReasonOf(kid.id())).contains("я на тренировке");
             assertThat(notifier.sent())
                     .extracting(
                             FakeNotifier.Sent::kind,

@@ -1,6 +1,7 @@
 package com.familytodo.adapter.telegram.render;
 
 import com.familytodo.adapter.telegram.view.HtmlEscaper;
+import com.familytodo.domain.Assignment;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.MemberColor;
 import com.familytodo.domain.Task;
@@ -295,12 +296,13 @@ public final class CalendarHtmlRenderer {
                     .append(
                             String.format(
                                     Locale.ROOT,
-                                    "top:%.3f%%;height:%.3f%%;left:%.3f%%;width:%.3f%%;--own:%s",
+                                    "top:%.3f%%;height:%.3f%%;left:%.3f%%;width:%.3f%%;--own:%s%s",
                                     top,
                                     height,
                                     left,
                                     width,
-                                    colorOf(byId, task)))
+                                    colorOf(byId, task),
+                                    fillOf(byId, task)))
                     .append("\">\n")
                     // время и название одной строкой: у получасового дела на телефоне высоты
                     // хватает строки на две, и каждая лишняя — это шанс не поместиться
@@ -352,6 +354,7 @@ public final class CalendarHtmlRenderer {
                         .append(statusClass(task.status()))
                         .append("\" style=\"--own:")
                         .append(colorOf(byId, task))
+                        .append(fillOf(byId, task))
                         .append("\"><span class=\"at\">")
                         .append(entry.startLabel())
                         .append("</span> ")
@@ -375,35 +378,56 @@ public final class CalendarHtmlRenderer {
         if (task.location() != null && !task.location().isBlank()) {
             meta.append(escape(task.location())).append(" · ");
         }
-        meta.append(name(byId, task.assignee().memberId()));
+        meta.append(names(byId, task));
         String status = statusLabel(task.status());
         if (status != null) {
             meta.append(" · ").append(status);
         }
         html.append("<div class=\"who\">").append(meta).append("</div>\n");
 
-        if (task.declineReason() != null && !task.declineReason().isBlank()) {
-            html.append("<div class=\"reason\">")
-                    .append(escape(task.declineReason()))
-                    .append("</div>\n");
-        }
+        appendRefusals(html, task, byId);
     }
 
     private static void appendDetails(StringBuilder html, Task task, Map<Long, Member> byId) {
         if (task.location() != null && !task.location().isBlank()) {
             html.append("<div class=\"where\">").append(escape(task.location())).append("</div>\n");
         }
-        html.append("<div class=\"who\">").append(name(byId, task.assignee().memberId()));
+        html.append("<div class=\"who\">").append(names(byId, task));
         String status = statusLabel(task.status());
         if (status != null) {
             html.append(" · ").append(status);
         }
         html.append("</div>\n");
-        if (task.declineReason() != null && !task.declineReason().isBlank()) {
-            html.append("<div class=\"reason\">")
-                    .append(escape(task.declineReason()))
-                    .append("</div>\n");
+        appendRefusals(html, task, byId);
+    }
+
+    /** Имена всех исполнителей: по цвету видно, чьё дело, но при двоих цвет уже не отвечает. */
+    private static String names(Map<Long, Member> byId, Task task) {
+        return task.assignments().stream()
+                .map(assignment -> name(byId, assignment.memberId()))
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    /**
+     * Отказы — по людям, с именем.
+     *
+     * <p>Одна строка «причина отказа» на дело отвечала бы неизвестно про кого: отказаться могли оба,
+     * и причины у них разные.
+     */
+    private static void appendRefusals(StringBuilder html, Task task, Map<Long, Member> byId) {
+        for (Assignment assignment : task.assignments()) {
+            if (assignment.hasDeclined() && !isBlank(assignment.declineReason())) {
+                html.append("<div class=\"reason\">")
+                        .append(name(byId, assignment.memberId()))
+                        .append(" — ")
+                        .append(escape(assignment.declineReason()))
+                        .append("</div>\n");
+            }
         }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /**
@@ -510,9 +534,43 @@ public final class CalendarHtmlRenderer {
      * <p>Исполнителя могли исключить из семьи: тогда берём цвет по умолчанию, а не падаем.
      */
     private static String colorOf(Map<Long, Member> byId, Task task) {
-        Member member = byId.get(task.assignee().memberId());
-        return (member == null ? MemberColor.forMember(task.assignee().memberId()) : member.color())
-                .hex();
+        return colorOf(byId, task.assignments().getFirst().memberId());
+    }
+
+    private static String colorOf(Map<Long, Member> byId, long memberId) {
+        Member member = byId.get(memberId);
+        return (member == null ? MemberColor.forMember(memberId) : member.color()).hex();
+    }
+
+    /**
+     * Заливка блока, когда исполнителей несколько: полосы их цветов без размытия.
+     *
+     * <p>⚠️ Отдельной переменной, а не через {@code --own}. Тот же {@code --own} используется в
+     * {@code border-left: 3px solid}, а градиент там невалиден: правило целиком отбрасывается, и
+     * полоска у дела без даты просто исчезает. Такие ошибки браузер не сообщает никак.
+     *
+     * <p>Границы полос считаются целыми процентами: у форматирования дробей берётся локаль машины,
+     * и в русской «50.0%» превратилось бы в «50,0%» — правило, которое браузер молча отбросит.
+     *
+     * @return готовый кусок стиля или пустая строка, если исполнитель один
+     */
+    private static String fillOf(Map<Long, Member> byId, Task task) {
+        int count = task.assignments().size();
+        if (count < 2) {
+            return "";
+        }
+
+        StringBuilder gradient = new StringBuilder(";--fill:linear-gradient(to right");
+        for (int i = 0; i < count; i++) {
+            gradient.append(", ")
+                    .append(colorOf(byId, task.assignments().get(i).memberId()))
+                    .append(' ')
+                    .append(Math.round(i * 100.0f / count))
+                    .append("% ")
+                    .append(Math.round((i + 1) * 100.0f / count))
+                    .append('%');
+        }
+        return gradient.append(')').toString();
     }
 
     private static String name(Map<Long, Member> byId, long memberId) {
@@ -635,7 +693,10 @@ public final class CalendarHtmlRenderer {
                  overflow: hidden;
                  padding: 3px 5px;
                  border-radius: 4px;
-                 background: var(--own, var(--accent));
+                 /* --fill появляется, только когда исполнителей несколько: полосы их цветов.
+                    Держать это отдельно от --own обязательно — тот же --own уходит в
+                    border-left, где градиент невалиден и правило отбрасывается молча */
+                 background: var(--fill, var(--own, var(--accent)));
                  color: var(--on-accent);
                  font-size: 11px;
                  line-height: 1.25;
@@ -662,7 +723,7 @@ public final class CalendarHtmlRenderer {
                .cell.outside { opacity: .45; }
                .date { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
                .chip {
-                 background: var(--own, var(--accent));
+                 background: var(--fill, var(--own, var(--accent)));
                  color: var(--on-accent);
                  border-radius: 4px;
                  padding: 2px 4px;

@@ -218,7 +218,7 @@ public final class AgendaView {
         if (task.location() != null) {
             line.append(" — ").append(HtmlEscaper.escape(task.location()));
         }
-        line.append("  ·  ").append(name(byId, task.assignee().memberId()));
+        line.append("  ·  ").append(AssigneeNames.of(task, byId));
         return line.toString();
     }
 

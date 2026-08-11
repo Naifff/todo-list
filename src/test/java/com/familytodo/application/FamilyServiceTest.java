@@ -9,6 +9,7 @@ import com.familytodo.application.fake.FakeNotifier.Kind;
 import com.familytodo.application.fake.InMemoryFamilyRepository;
 import com.familytodo.application.fake.InMemoryMemberRepository;
 import com.familytodo.application.fake.InMemoryTaskRepository;
+import com.familytodo.domain.Assignment;
 import com.familytodo.domain.DomainException;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.MemberStatus;
@@ -20,6 +21,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -124,8 +126,34 @@ class FamilyServiceTest {
 
             Task cancelled = tasks.findById(mom.familyId(), task.id()).orElseThrow();
             assertThat(cancelled.status()).isEqualTo(TaskStatus.DECLINED);
-            assertThat(cancelled.declineReason()).isNotBlank();
+            assertThat(cancelled.declineReasonOf(kid.id())).get().asString().isNotBlank();
             assertThat(cancelled.closedAt()).isEqualTo(NOW);
+        }
+
+        /**
+         * У дела остались другие исполнители — оно живёт дальше.
+         *
+         * <p>Закрывать его целиком значило бы наказывать оставшихся за чужой уход: запись к врачу
+         * нужна второму родителю ровно так же, как была нужна до исключения первого.
+         */
+        @Test
+        void aTaskWithOtherAssigneesSurvivesTheRemoval() {
+            Member mom = founder();
+            Member dad = join(mom, "Папа", Role.PARENT);
+            Member kid = join(mom, "Петя", Role.CHILD);
+            Task task =
+                    taskService.create(
+                            mom, List.of(dad.id(), kid.id()), "Отвезти к врачу", DUE);
+            notifier.clear();
+
+            service.removeMember(mom, kid.id());
+
+            Task surviving = tasks.findById(mom.familyId(), task.id()).orElseThrow();
+            assertThat(surviving.status()).isEqualTo(TaskStatus.OPEN);
+            assertThat(surviving.assignments())
+                    .extracting(Assignment::memberId)
+                    .containsExactly(dad.id());
+            assertThat(notifier.sent()).isEmpty();
         }
 
         @Test

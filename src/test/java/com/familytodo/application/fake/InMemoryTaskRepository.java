@@ -125,15 +125,33 @@ public final class InMemoryTaskRepository implements TaskRepository {
         if (!query.statuses().contains(task.status())) {
             return false;
         }
-        if (query.assigneeId() != null && task.assignee().memberId() != query.assigneeId()) {
-            return false;
+        // «что поручено мне» — отказавшийся выпадает, пока дело открыто: он уже ответил.
+        // Условие повторяет SQL дословно; фейк, который прощает больше базы, обесценивает
+        // все тесты юзкейсов разом
+        if (query.assigneeId() != null) {
+            long assignee = query.assigneeId();
+            boolean onIt =
+                    task.assignments().stream()
+                            .anyMatch(
+                                    assignment ->
+                                            assignment.memberId() == assignee
+                                                    && (!assignment.hasDeclined()
+                                                            || task.status() != TaskStatus.OPEN));
+            if (!onIt) {
+                return false;
+            }
         }
         if (query.creatorId() != null && task.creatorId() != query.creatorId()) {
             return false;
         }
+        // «что мне видно» — а здесь отказавшийся своё дело видеть продолжает: оно всё ещё его
         if (query.visibleToMemberId() != null) {
             long viewer = query.visibleToMemberId();
-            if (task.assignee().memberId() != viewer && task.creatorId() != viewer) {
+            boolean involved =
+                    task.creatorId() == viewer
+                            || task.assignments().stream()
+                                    .anyMatch(assignment -> assignment.memberId() == viewer);
+            if (!involved) {
                 return false;
             }
         }

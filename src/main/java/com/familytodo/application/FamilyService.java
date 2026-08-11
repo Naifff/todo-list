@@ -142,14 +142,21 @@ public class FamilyService {
         List<Task> open = tasks.find(TaskQuery.openAssignedTo(removed.familyId(), removed.id()));
 
         for (Task task : open) {
-            task.cancelBySystem(Actor.system(), REMOVED_MEMBER_REASON, now);
+            // ушедший снимается с дела; закрылось оно или нет, решает домен — дело с другими
+            // исполнителями живёт дальше, и сообщать автору тогда не о чем
+            boolean cancelled =
+                    task.releaseBySystem(
+                            Actor.system(), removed.id(), REMOVED_MEMBER_REASON, now);
             Task saved = tasks.save(task);
 
-            members.findById(removed.familyId(), saved.creatorId())
-                    .filter(Member::isReachable)
-                    .ifPresent(
-                            author ->
-                                    notifier.taskCancelled(author, saved, REMOVED_MEMBER_REASON));
+            if (cancelled) {
+                members.findById(removed.familyId(), saved.creatorId())
+                        .filter(Member::isReachable)
+                        .ifPresent(
+                                author ->
+                                        notifier.taskCancelled(
+                                                author, saved, REMOVED_MEMBER_REASON));
+            }
         }
     }
 

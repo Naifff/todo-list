@@ -142,6 +142,33 @@ class CrossFamilyIsolationIT extends AbstractSqliteIT {
     }
 
     /**
+     * Несколько исполнителей — новый способ протащить чужого: он не первый в списке, а второй.
+     *
+     * <p>⚠️ Проверяются оба пути отдельно. Создание с готовым списком и добавление кнопкой в уже
+     * существующее дело — разный код, и закрытым одним из них второй не становится.
+     */
+    @Test
+    void aStrangerCannotBeSmuggledInAsASecondAssignee() {
+        assertThatThrownBy(
+                        () ->
+                                service.create(
+                                        momA,
+                                        java.util.List.of(kidA.id(), momB.id()),
+                                        "Отвезти к врачу",
+                                        DUE))
+                .isInstanceOf(DomainException.NotFound.class);
+
+        assertThatThrownBy(() -> service.assign(momA, taskOfFamilyA.id(), momB.id()))
+                .isInstanceOf(DomainException.NotFound.class);
+
+        assertThat(taskRepository.findById(momA.familyId(), taskOfFamilyA.id()).orElseThrow()
+                        .assignments())
+                .extracting(com.familytodo.domain.Assignment::memberId)
+                .doesNotContain(momB.id());
+        assertThat(taskRepository.find(TaskQuery.visibleTo(momB))).isEmpty();
+    }
+
+    /**
      * Вторая ось изоляции: внутри одной семьи. Задача найдена, но посторонний ребёнок к ней не
      * причастен — здесь ответ уже «нельзя», потому что существование задачи в своей семье не
      * секрет.

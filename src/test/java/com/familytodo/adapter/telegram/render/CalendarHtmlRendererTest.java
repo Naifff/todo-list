@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.familytodo.domain.Assignee;
+import com.familytodo.domain.Assignment;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Role;
 import com.familytodo.domain.Task;
@@ -658,15 +659,47 @@ class CalendarHtmlRendererTest {
             String location,
             TaskStatus status,
             String declineReason) {
+        return task(
+                title,
+                dueAt,
+                startsAt,
+                endsAt,
+                location,
+                status,
+                declineReason,
+                List.of(new Assignment(11L, Role.CHILD, null, null)));
+    }
+
+    /** Форма с явными исполнителями: нужна там, где проверяется дело на нескольких. */
+    private Task task(
+            String title,
+            Instant dueAt,
+            Instant startsAt,
+            Instant endsAt,
+            String location,
+            TaskStatus status,
+            String declineReason,
+            List<Assignment> assignments) {
+        List<Assignment> stored =
+                declineReason == null
+                        ? assignments
+                        : assignments.stream()
+                                .map(
+                                        assignment ->
+                                                new Assignment(
+                                                        assignment.memberId(),
+                                                        assignment.role(),
+                                                        MONDAY.atStartOfDay(MOSCOW).toInstant(),
+                                                        declineReason))
+                                .toList();
         return Task.restore(
                 ids.incrementAndGet(),
                 1L,
                 title,
                 10L,
-                new Assignee(11L, Role.CHILD),
+                stored,
                 status,
                 dueAt,
-                declineReason,
                 MONDAY.atStartOfDay(MOSCOW).toInstant(),
                 null,
                 startsAt,

@@ -4,12 +4,17 @@ import com.familytodo.application.port.MemberRepository;
 import com.familytodo.application.port.Notifier;
 import com.familytodo.application.port.TaskRepository;
 import com.familytodo.domain.Assignee;
+import com.familytodo.domain.Assignment;
 import com.familytodo.domain.DomainException;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Юзкейсы задач.
@@ -19,6 +24,9 @@ import java.util.List;
  *
  * <p>Общее правило уведомлений: сообщаем тому, кого это касается и кто не сам это сделал.
  * Самоназначенные задачи не порождают уведомлений вообще.
+ *
+ * <p>Когда исполнителей несколько, «кого это касается» расширяется на них всех: если мама закрыла
+ * запись к врачу, папа должен перестать держать её в голове — ради этого фича и делалась.
  */
 public class TaskService {
 
@@ -37,8 +45,22 @@ public class TaskService {
 
     /** Создать задачу может любой активный участник — в том числе ребёнок, и в том числе родителю. */
     public Task create(Member creator, long assigneeId, String title, Instant dueAt) {
+        return create(creator, List.of(assigneeId), title, dueAt);
+    }
+
+    /**
+     * Поручить дело сразу нескольким.
+     *
+     * <p>Порядок сохраняется: он же порядок имён в карточке. Повторы снимает домен — назначить
+     * одного человека дважды нельзя ни здесь, ни потом кнопкой.
+     */
+    public Task create(Member creator, List<Long> assigneeIds, String title, Instant dueAt) {
         requireActive(creator);
-        Member assignee = requireActiveMember(creator.familyId(), assigneeId);
+
+        List<Member> assignees = new ArrayList<>();
+        for (long assigneeId : new LinkedHashSet<>(assigneeIds)) {
+            assignees.add(requireActiveMember(creator.familyId(), assigneeId));
+        }
 
         Task task =
                 Task.create(
@@ -46,33 +68,44 @@ public class TaskService {
                         creator.familyId(),
                         title,
                         creator.id(),
-                        new Assignee(assignee.id(), assignee.role()),
+                        assignees.stream()
+                                .map(member -> new Assignee(member.id(), member.role()))
+                                .toList(),
                         dueAt,
                         clock.instant());
         Task saved = tasks.save(task);
 
-        if (!saved.isSelfAssigned()) {
-            notify(assignee, r -> notifier.taskAssigned(r, saved));
+        for (Member assignee : assignees) {
+            if (assignee.id() != creator.id()) {
+                notify(assignee, r -> notifier.taskAssigned(r, saved));
+            }
         }
         return saved;
     }
 
     public Task complete(Member actor, long taskId) {
         Task task = load(actor, taskId);
+        List<Long> involved = involved(task);
         task.complete(actor.asActor(), clock.instant());
         Task saved = tasks.save(task);
 
-        notifyMember(actor, saved.creatorId(), r -> notifier.taskCompleted(r, saved, actor));
+        notifyEach(actor, involved, r -> notifier.taskCompleted(r, saved, actor));
         return saved;
     }
 
+    /**
+     * Отказ снимает дело с одного человека, а не со всех.
+     *
+     * <p>Знать об этом должны и автор, и остальные исполнители: «папа не может» для мамы значит
+     * «еду я», и без сообщения она узнает об этом, только открыв карточку.
+     */
     public Task decline(Member actor, long taskId, String reason) {
         Task task = load(actor, taskId);
+        List<Long> involved = involved(task);
         task.decline(actor.asActor(), reason, clock.instant());
         Task saved = tasks.save(task);
 
-        notifyMember(
-                actor, saved.creatorId(), r -> notifier.taskDeclined(r, saved, actor, reason));
+        notifyEach(actor, involved, r -> notifier.taskDeclined(r, saved, actor, reason));
         return saved;
     }
 
@@ -82,11 +115,7 @@ public class TaskService {
         task.reopen(actor.asActor());
         Task saved = tasks.save(task);
 
-        long recipient =
-                actor.id() == saved.assignee().memberId()
-                        ? saved.creatorId()
-                        : saved.assignee().memberId();
-        notifyMember(actor, recipient, r -> notifier.taskReopened(r, saved, actor));
+        notifyEach(actor, involved(saved), r -> notifier.taskReopened(r, saved, actor));
         return saved;
     }
 
@@ -97,21 +126,52 @@ public class TaskService {
     }
 
     /**
-     * Смена исполнителя. Уведомляются обе стороны: новый — что на нём дело, прежний — что с него
-     * сняли. Молча переложить просьбу на другого нельзя, иначе первый продолжит её держать в голове.
+     * Смена исполнителя. Уведомляются обе стороны: новый — что на нём дело, прежние — что с них
+     * сняли. Молча переложить просьбу на другого нельзя, иначе первый продолжит держать её в голове.
      */
     public Task reassign(Member actor, long taskId, long newAssigneeId) {
         Task task = load(actor, taskId);
         Member newAssignee = requireActiveMember(actor.familyId(), newAssigneeId);
 
-        Assignee previous =
+        List<Assignment> previous =
                 task.reassign(
                         actor.asActor(), new Assignee(newAssignee.id(), newAssignee.role()));
         Task saved = tasks.save(task);
 
-        if (previous.memberId() != newAssignee.id()) {
-            notifyMember(actor, previous.memberId(), r -> notifier.taskUnassigned(r, saved));
+        for (Assignment gone : previous) {
+            if (gone.memberId() != newAssignee.id()) {
+                notifyMember(actor, gone.memberId(), r -> notifier.taskUnassigned(r, saved));
+            }
+        }
+        if (previous.stream().noneMatch(gone -> gone.memberId() == newAssignee.id())) {
             notifyMember(actor, newAssignee.id(), r -> notifier.taskAssigned(r, saved));
+        }
+        return saved;
+    }
+
+    /** Поручить дело ещё одному — круг исполнителей расширяется, прежние остаются. */
+    public Task assign(Member actor, long taskId, long assigneeId) {
+        Task task = load(actor, taskId);
+        Member assignee = requireActiveMember(actor.familyId(), assigneeId);
+
+        boolean added =
+                task.assign(actor.asActor(), new Assignee(assignee.id(), assignee.role()));
+        Task saved = tasks.save(task);
+
+        if (added) {
+            notifyMember(actor, assignee.id(), r -> notifier.taskAssigned(r, saved));
+        }
+        return saved;
+    }
+
+    /** Снять с дела. Последнего снять нельзя — это проверяет домен. */
+    public Task unassign(Member actor, long taskId, long assigneeId) {
+        Task task = load(actor, taskId);
+        boolean removed = task.unassign(actor.asActor(), assigneeId);
+        Task saved = tasks.save(task);
+
+        if (removed) {
+            notifyMember(actor, assigneeId, r -> notifier.taskUnassigned(r, saved));
         }
         return saved;
     }
@@ -146,7 +206,8 @@ public class TaskService {
         Task task = load(actor, taskId);
         boolean visible =
                 actor.isParent()
-                        || task.assignee().memberId() == actor.id()
+                        || task.assignments().stream()
+                                .anyMatch(assignment -> assignment.memberId() == actor.id())
                         || task.creatorId() == actor.id();
         if (!visible) {
             throw new DomainException.NotFound("task " + taskId + " not found");
@@ -176,15 +237,32 @@ public class TaskService {
         }
     }
 
+    /**
+     * Все, кого касается судьба дела: автор и исполнители.
+     *
+     * <p>Снимается <b>до</b> перехода, потому что переход список меняет: снятый с дела человек всё
+     * ещё должен узнать, что дело закрыли.
+     */
+    private static List<Long> involved(Task task) {
+        Set<Long> recipients = new LinkedHashSet<>();
+        recipients.add(task.creatorId());
+        task.assignments().forEach(assignment -> recipients.add(assignment.memberId()));
+        return List.copyOf(recipients);
+    }
+
+    private void notifyEach(Member actor, List<Long> recipientIds, Consumer<Member> send) {
+        recipientIds.forEach(recipientId -> notifyMember(actor, recipientId, send));
+    }
+
     /** Себе не пишем, недостижимым тоже: заблокировавшим бота и исключённым отправлять некуда. */
-    private void notifyMember(Member actor, long recipientId, java.util.function.Consumer<Member> send) {
+    private void notifyMember(Member actor, long recipientId, Consumer<Member> send) {
         if (recipientId == actor.id()) {
             return;
         }
         members.findById(actor.familyId(), recipientId).ifPresent(r -> notify(r, send));
     }
 
-    private void notify(Member recipient, java.util.function.Consumer<Member> send) {
+    private void notify(Member recipient, Consumer<Member> send) {
         if (recipient.isReachable()) {
             send.accept(recipient);
         }

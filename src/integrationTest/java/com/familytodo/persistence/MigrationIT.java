@@ -16,7 +16,8 @@ class MigrationIT extends AbstractSqliteIT {
                         .query(String.class)
                         .list();
 
-        assertThat(tables).contains("family", "member", "invite", "task", "id_sequence");
+        assertThat(tables)
+                .contains("family", "member", "invite", "task", "task_assignee", "id_sequence");
     }
 
     @Test
@@ -29,7 +30,7 @@ class MigrationIT extends AbstractSqliteIT {
         assertThat(indexes)
                 .containsExactlyInAnyOrder(
                         "idx_task_family_status",
-                        "idx_task_assignee_status",
+                        "idx_task_assignee_member",
                         "idx_task_due",
                         "idx_task_family_starts",
                         "idx_task_occurrence",
@@ -128,9 +129,9 @@ class MigrationIT extends AbstractSqliteIT {
                                 jdbc.sql(
                                                 """
                                                 insert into task
-                                                  (id, family_id, title, creator_id, assignee_id,
+                                                  (id, family_id, title, creator_id,
                                                    status, created_at)
-                                                values (1, 1, 'Вынести мусор', 1, 1, 'ЧТО-ТО', 0)
+                                                values (1, 1, 'Вынести мусор', 1, 'ЧТО-ТО', 0)
                                                 """)
                                         .update())
                 .isInstanceOf(DataIntegrityViolationException.class);
@@ -146,9 +147,9 @@ class MigrationIT extends AbstractSqliteIT {
                                 jdbc.sql(
                                                 """
                                                 insert into task
-                                                  (id, family_id, title, creator_id, assignee_id,
+                                                  (id, family_id, title, creator_id,
                                                    status, created_at)
-                                                values (1, 1, ?, 1, 1, 'OPEN', 0)
+                                                values (1, 1, ?, 1, 'OPEN', 0)
                                                 """)
                                         .param("я".repeat(201))
                                         .update())
@@ -167,6 +168,26 @@ class MigrationIT extends AbstractSqliteIT {
                 jdbc.sql("select id from task order by due_at").query(Long.class).list();
 
         assertThat(ordered).containsExactly(1L, 2L);
+    }
+
+    /**
+     * Удаление дела у нас — стирание строки, а не статус {@code DELETED}. Назначения обязаны уйти
+     * вместе с ним: осиротевшая строка ни на что не влияет и потому не будет замечена никогда.
+     *
+     * <p>Держит это {@code on delete cascade}, а он в SQLite работает только при включённой прагме
+     * внешних ключей — то есть тест заодно проверяет, что прагма доехала и до этого пути.
+     */
+    @Test
+    void deletingATaskTakesItsAssignmentsWithIt() {
+        insertFamily();
+        insertMember(1, 100000001L);
+        insertTask(1, 1786060800000L);
+        jdbc.sql("insert into task_assignee (task_id, member_id) values (1, 1)").update();
+
+        jdbc.sql("delete from task where id = 1").update();
+
+        assertThat(jdbc.sql("select count(*) from task_assignee").query(Integer.class).single())
+                .isZero();
     }
 
     private void insertFamily() {
@@ -194,8 +215,8 @@ class MigrationIT extends AbstractSqliteIT {
         jdbc.sql(
                         """
                         insert into task
-                          (id, family_id, title, creator_id, assignee_id, status, due_at, created_at)
-                        values (?, 1, 'Вынести мусор', 1, 1, 'OPEN', ?, 0)
+                          (id, family_id, title, creator_id, status, due_at, created_at)
+                        values (?, 1, 'Вынести мусор', 1, 'OPEN', ?, 0)
                         """)
                 .params(id, dueAt)
                 .update();

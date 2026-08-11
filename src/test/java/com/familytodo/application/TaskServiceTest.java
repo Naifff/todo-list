@@ -59,7 +59,7 @@ class TaskServiceTest {
             Task task = service.create(mom, kid.id(), "Вынести мусор", DUE);
 
             assertThat(task.status()).isEqualTo(TaskStatus.OPEN);
-            assertThat(task.assignee().memberId()).isEqualTo(kid.id());
+            assertThat(task.assignments().getFirst().memberId()).isEqualTo(kid.id());
             assertThat(task.creatorId()).isEqualTo(mom.id());
             assertThat(notifier.sent())
                     .extracting(FakeNotifier.Sent::kind, FakeNotifier.Sent::recipientId)
@@ -71,8 +71,8 @@ class TaskServiceTest {
         void childMayAssignToParent() {
             Task task = service.create(kid, mom.id(), "Купить корм коту", DUE);
 
-            assertThat(task.assignee().memberId()).isEqualTo(mom.id());
-            assertThat(task.assignee().role()).isEqualTo(Role.PARENT);
+            assertThat(task.assignments().getFirst().memberId()).isEqualTo(mom.id());
+            assertThat(task.assignments().getFirst().role()).isEqualTo(Role.PARENT);
             assertThat(notifier.sent()).hasSize(1);
         }
 
@@ -143,15 +143,25 @@ class TaskServiceTest {
             assertThat(closed.closedAt()).isEqualTo(NOW);
         }
 
-        /** Автор закрыл сам — сообщать некому. */
+        /**
+         * Автор закрыл дело сам — узнать об этом должен исполнитель.
+         *
+         * <p>⚠️ Это изменение прежнего поведения, а не его уточнение. Раньше закрытие сообщалось
+         * только автору, и мама, вынесшая мусор вместо ребёнка, оставляла дело висеть у него в
+         * {@code /my} без единого слова. Правило стало общим: о закрытии узнают все причастные,
+         * кроме нажавшего. Особый случай «исполнителю не сообщать, если он один» был бы
+         * несвязным — с несколькими исполнителями сообщать приходится обязательно.
+         */
         @Test
-        void creatorClosingOwnRequestNotifiesNobody() {
+        void creatorClosingOwnRequestTellsTheAssignee() {
             Task task = service.create(mom, kid.id(), "Вынести мусор", DUE);
             notifier.clear();
 
             service.complete(mom, task.id());
 
-            assertThat(notifier.sent()).isEmpty();
+            assertThat(notifier.sent())
+                    .extracting(FakeNotifier.Sent::kind, FakeNotifier.Sent::recipientId)
+                    .containsExactly(tuple(Kind.COMPLETED, kid.id()));
         }
 
         @Test
