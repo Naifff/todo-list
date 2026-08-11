@@ -19,6 +19,12 @@ public final class NewTaskKeyboards {
     public static final String ASSIGNEE = "who";
     public static final String DUE = "due";
 
+    /** Мультивыбор исполнителей: открыть, переключить одного, закончить. */
+    public static final String MANY = "many";
+
+    public static final String TOGGLE_ASSIGNEE = "wtog";
+    public static final String ASSIGNEES_DONE = "wok";
+
     public static final String TODAY = "today";
     public static final String TOMORROW = "tomorrow";
     public static final String WEEKEND = "weekend";
@@ -62,6 +68,39 @@ public final class NewTaskKeyboards {
         if (!row.isEmpty()) {
             rows.add(row);
         }
+        // отдельной кнопкой, а не мультивыбором сразу: исполнитель почти всегда один,
+        // и лишнее «Готово» на каждом деле ради редкого случая — плохой размен
+        if (family.size() > 1) {
+            rows.add(new InlineKeyboardRow(button("Нескольким…", MANY, "0")));
+        }
+        return InlineKeyboardMarkup.builder().keyboard(rows).build();
+    }
+
+    /**
+     * Мультивыбор: отмеченные видны прямо на кнопках, как и в выборе дней недели.
+     *
+     * <p>Себя тоже показываем по имени, а не «Себе»: в отмеченном списке «Себе» рядом с именами
+     * читается как ещё один человек.
+     */
+    public static InlineKeyboardMarkup someAssignees(List<Member> family, List<Long> chosen) {
+        List<InlineKeyboardRow> rows = new ArrayList<>();
+        InlineKeyboardRow row = new InlineKeyboardRow();
+        for (Member member : family) {
+            String name = HtmlEscaper.escape(member.displayName());
+            row.add(
+                    button(
+                            chosen.contains(member.id()) ? "· " + name + " ·" : name,
+                            TOGGLE_ASSIGNEE,
+                            Long.toString(member.id())));
+            if (row.size() == 2) {
+                rows.add(row);
+                row = new InlineKeyboardRow();
+            }
+        }
+        if (!row.isEmpty()) {
+            rows.add(row);
+        }
+        rows.add(new InlineKeyboardRow(button("Готово", ASSIGNEES_DONE, "0")));
         return InlineKeyboardMarkup.builder().keyboard(rows).build();
     }
 

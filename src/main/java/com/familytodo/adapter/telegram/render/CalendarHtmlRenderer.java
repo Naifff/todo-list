@@ -120,8 +120,15 @@ public final class CalendarHtmlRenderer {
             }
             for (Entry entry : entries) {
                 Task task = entry.task();
+                // ⚠️ Цвет исполнителя здесь не подставлялся никогда: CSS под него написан
+                // (border-left: var(--own, ...)), а значение не приезжало, и полоска у всех
+                // дел была одного цвета — цвета запасного варианта. Найдено взглядом на
+                // страницу, тестом такое не ловится.
                 html.append("<div class=\"loose ")
                         .append(statusClass(task.status()))
+                        .append("\" style=\"--own:")
+                        .append(colorOf(byId, task))
+                        .append(fillOf(byId, task))
                         .append("\">\n<div class=\"time\">")
                         .append(entry.when())
                         .append("</div>\n<div class=\"title\">")
@@ -444,6 +451,9 @@ public final class CalendarHtmlRenderer {
         for (Task task : undated) {
             html.append("<div class=\"loose ")
                     .append(statusClass(task.status()))
+                    .append("\" style=\"--own:")
+                    .append(colorOf(byId, task))
+                    .append(fillOf(byId, task))
                     .append("\">\n")
                     .append("<div class=\"title\">")
                     .append(escape(task.title()))
@@ -543,7 +553,11 @@ public final class CalendarHtmlRenderer {
     }
 
     /**
-     * Заливка блока, когда исполнителей несколько: полосы их цветов без размытия.
+     * Лента цветов поверху блока, когда исполнителей несколько.
+     *
+     * <p>⚠️ Лента, а не заливка блока пополам. Половинки читались с телефона как <b>два соседних
+     * блока</b>, а соседние блоки в сетке означают ровно одно — пересекающиеся дела. То есть дело на
+     * двоих выглядело как два разных дела. Найдено не тестом, а взглядом на готовую страницу.
      *
      * <p>⚠️ Отдельной переменной, а не через {@code --own}. Тот же {@code --own} используется в
      * {@code border-left: 3px solid}, а градиент там невалиден: правило целиком отбрасывается, и
@@ -560,7 +574,7 @@ public final class CalendarHtmlRenderer {
             return "";
         }
 
-        StringBuilder gradient = new StringBuilder(";--fill:linear-gradient(to right");
+        StringBuilder gradient = new StringBuilder(";--ribbon:linear-gradient(to right");
         for (int i = 0; i < count; i++) {
             gradient.append(", ")
                     .append(colorOf(byId, task.assignments().get(i).memberId()))
@@ -693,10 +707,13 @@ public final class CalendarHtmlRenderer {
                  overflow: hidden;
                  padding: 3px 5px;
                  border-radius: 4px;
-                 /* --fill появляется, только когда исполнителей несколько: полосы их цветов.
-                    Держать это отдельно от --own обязательно — тот же --own уходит в
+                 /* --ribbon появляется, только когда исполнителей несколько: тонкая лента их
+                    цветов поверху. Не заливка блока пополам — половинки читались с телефона
+                    как два соседних блока, а это в сетке означает пересекающиеся дела.
+                    Держать ленту отдельно от --own обязательно: тот же --own уходит в
                     border-left, где градиент невалиден и правило отбрасывается молча */
-                 background: var(--fill, var(--own, var(--accent)));
+                 background: var(--ribbon, none) top / 100% 3px no-repeat,
+                             var(--own, var(--accent));
                  color: var(--on-accent);
                  font-size: 11px;
                  line-height: 1.25;
@@ -723,7 +740,8 @@ public final class CalendarHtmlRenderer {
                .cell.outside { opacity: .45; }
                .date { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
                .chip {
-                 background: var(--fill, var(--own, var(--accent)));
+                 background: var(--ribbon, none) top / 100% 3px no-repeat,
+                             var(--own, var(--accent));
                  color: var(--on-accent);
                  border-radius: 4px;
                  padding: 2px 4px;

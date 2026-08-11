@@ -2,10 +2,13 @@ package com.familytodo.adapter.telegram.view;
 
 import com.familytodo.adapter.telegram.CallbackData;
 import com.familytodo.adapter.telegram.TaskRef;
+import com.familytodo.domain.Assignment;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
@@ -33,7 +36,7 @@ public final class TaskEditView {
                         new InlineKeyboardRow(
                                 button("Название", TITLE, argument),
                                 button("Срок", DUE, argument),
-                                button("Исполнителя", WHO, argument)))
+                                button("Кто делает", WHO, argument)))
                 .keyboardRow(new InlineKeyboardRow(button("Время и место", SLOT, argument)))
                 .keyboardRow(
                         new InlineKeyboardRow(
@@ -55,13 +58,30 @@ public final class TaskEditView {
                 .build();
     }
 
-    public static InlineKeyboardMarkup assignees(List<Member> family) {
+    /**
+     * Кто делает: список-переключатель, отмеченные — текущие исполнители.
+     *
+     * <p>Тап добавляет или снимает, а не заменяет. Так один экран отвечает сразу на обе просьбы:
+     * «пусть сделаем оба» и «пусть сделает папа вместо меня» — вторая это два тапа, включить нового
+     * и выключить себя.
+     *
+     * <p>Клавиатура остаётся на экране после каждого нажатия: менять состав по одному человеку за
+     * раз, возвращаясь в меню, было бы мучением при троих.
+     */
+    public static InlineKeyboardMarkup assignees(
+            Task task, List<Member> family, TaskListView.Kind kind) {
+        Set<Long> current =
+                task.assignments().stream()
+                        .map(Assignment::memberId)
+                        .collect(Collectors.toSet());
+
         List<InlineKeyboardRow> rows = new ArrayList<>();
         InlineKeyboardRow row = new InlineKeyboardRow();
         for (Member member : family) {
+            String name = HtmlEscaper.escape(member.displayName());
             row.add(
                     button(
-                            HtmlEscaper.escape(member.displayName()),
+                            current.contains(member.id()) ? "· " + name + " ·" : name,
                             SET_WHO,
                             Long.toString(member.id())));
             if (row.size() == 2) {
@@ -72,6 +92,7 @@ public final class TaskEditView {
         if (!row.isEmpty()) {
             rows.add(row);
         }
+        rows.add(new InlineKeyboardRow(cardButton("← К задаче", TaskRef.format(kind, task.id()))));
         return InlineKeyboardMarkup.builder().keyboard(rows).build();
     }
 

@@ -24,6 +24,7 @@ import com.familytodo.application.fake.InMemoryTaskSeriesRepository;
 import com.familytodo.domain.Recurrence;
 import java.time.DayOfWeek;
 import java.util.Set;
+import com.familytodo.domain.Assignment;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Role;
 import com.familytodo.domain.Task;
@@ -60,6 +61,7 @@ class NewTaskHandlerTest {
     private NewTaskHandler handler;
     private Member mom;
     private Member kid;
+    private Member dad;
 
     @BeforeEach
     void setUp() {
@@ -86,6 +88,16 @@ class NewTaskHandlerTest {
                                 512034877L,
                                 "Петя",
                                 Role.CHILD,
+                                NOW));
+        dad =
+                members.save(
+                        Member.join(
+                                members.nextId(),
+                                mom.familyId(),
+                                512034878L,
+                                512034878L,
+                                "Папа",
+                                Role.PARENT,
                                 NOW));
         notifier.clear();
         sender.clear();
@@ -126,7 +138,7 @@ class NewTaskHandlerTest {
 
             assertThat(sender.texts).containsExactly(Texts.ASK_DUE);
             assertThat(dialogs.get(mom.telegramUserId()))
-                    .contains(new DialogState.AwaitingDueDate("Вынести мусор", kid.id()));
+                    .contains(new DialogState.AwaitingDueDate("Вынести мусор", List.of(kid.id())));
         }
 
         @Test
@@ -186,6 +198,131 @@ class NewTaskHandlerTest {
 
             assertThat(notifier.sent()).isEmpty();
             assertThat(tasks.find(TaskQuery.visibleTo(mom)).getFirst().isSelfAssigned()).isTrue();
+        }
+    }
+
+    /**
+     * Дело сразу на нескольких.
+     *
+     * <p>Отдельная ветка, а не мультивыбор с самого начала: тап по имени по-прежнему выбирает
+     * одного и ведёт дальше. Лишнее «Готово» на каждом деле ради редкого случая — плохой размен, и
+     * {@link Assignee#singleTapStillPicksOne} это стережёт.
+     */
+    @Nested
+    class SeveralAssignees {
+
+        @Test
+        void pickingTwoAndPressingDoneGoesOnToTheDeadline() {
+            startAndName(mom, "Отвезти Наифа к врачу");
+            handler.handle(callback(mom), many());
+            sender.clear();
+
+            handler.handle(callback(mom), toggleAssignee(mom.id()));
+            handler.handle(callback(mom), toggleAssignee(dad.id()));
+            handler.handle(callback(mom), assigneesDone());
+
+            assertThat(sender.texts).endsWith(Texts.ASK_DUE);
+            assertThat(dialogs.get(mom.telegramUserId()))
+                    .contains(
+                            new DialogState.AwaitingDueDate(
+                                    "Отвезти Наифа к врачу", List.of(mom.id(), dad.id())));
+        }
+
+        @Test
+        void bothPeopleEndUpOnTheTask() {
+            startAndName(mom, "Отвезти Наифа к врачу");
+            handler.handle(callback(mom), many());
+            handler.handle(callback(mom), toggleAssignee(mom.id()));
+            handler.handle(callback(mom), toggleAssignee(dad.id()));
+            handler.handle(callback(mom), assigneesDone());
+
+            handler.handle(callback(mom), due(NewTaskKeyboards.NONE));
+
+            Task created = tasks.find(TaskQuery.visibleTo(mom)).getFirst();
+            assertThat(created.assignments())
+                    .extracting(Assignment::memberId)
+                    .containsExactly(mom.id(), dad.id());
+        }
+
+        /** Уведомление уходит каждому, кроме самого автора: себе писать незачем. */
+        @Test
+        void everyoneButTheAuthorIsNotified() {
+            startAndName(mom, "Отвезти Наифа к врачу");
+            handler.handle(callback(mom), many());
+            handler.handle(callback(mom), toggleAssignee(mom.id()));
+            handler.handle(callback(mom), toggleAssignee(dad.id()));
+            handler.handle(callback(mom), toggleAssignee(kid.id()));
+            handler.handle(callback(mom), assigneesDone());
+
+            handler.handle(callback(mom), due(NewTaskKeyboards.NONE));
+
+            assertThat(notifier.sent())
+                    .extracting(FakeNotifier.Sent::kind, FakeNotifier.Sent::recipientId)
+                    .containsExactlyInAnyOrder(
+                            org.assertj.core.groups.Tuple.tuple(Kind.ASSIGNED, dad.id()),
+                            org.assertj.core.groups.Tuple.tuple(Kind.ASSIGNED, kid.id()));
+        }
+
+        @Test
+        void tappingTheSameNameTwiceUnticksIt() {
+            startAndName(mom, "Отвезти Наифа к врачу");
+            handler.handle(callback(mom), many());
+
+            handler.handle(callback(mom), toggleAssignee(dad.id()));
+            handler.handle(callback(mom), toggleAssignee(dad.id()));
+
+            assertThat(dialogs.get(mom.telegramUserId()))
+                    .contains(
+                            new DialogState.ChoosingAssignees("Отвезти Наифа к врачу", List.of()));
+        }
+
+        /** Никого не отметили — состояние не сбрасываем: человек не передумал, а ещё не выбрал. */
+        @Test
+        void pressingDoneWithNobodyTickedKeepsThePicker() {
+            startAndName(mom, "Отвезти Наифа к врачу");
+            handler.handle(callback(mom), many());
+            sender.clear();
+
+            handler.handle(callback(mom), assigneesDone());
+
+            assertThat(sender.texts).containsExactly(Texts.PICK_AT_LEAST_ONE_ASSIGNEE);
+            assertThat(dialogs.get(mom.telegramUserId()))
+                    .containsInstanceOf(DialogState.ChoosingAssignees.class);
+        }
+
+        /**
+         * ⚠️ Повторение доступно, только когда исполнитель один: серия хранит одного. Вопрос про
+         * повторение не задаётся, но и не пропадает молча — иначе человек решит, что бот сломался.
+         */
+        @Test
+        void aSharedTaskSkipsTheRepeatQuestionAndSaysWhy() {
+            startAndName(mom, "Отвезти Наифа к врачу");
+            handler.handle(callback(mom), many());
+            handler.handle(callback(mom), toggleAssignee(mom.id()));
+            handler.handle(callback(mom), toggleAssignee(dad.id()));
+            handler.handle(callback(mom), assigneesDone());
+            sender.clear();
+
+            handler.handle(callback(mom), due(NewTaskKeyboards.TOMORROW));
+
+            assertThat(sender.texts).hasSize(1);
+            assertThat(sender.texts.getFirst())
+                    .doesNotContain(Texts.ASK_REPEAT)
+                    .contains(Texts.NO_REPEAT_FOR_SEVERAL)
+                    .contains("Делают:");
+            assertThat(series.findActive(mom.familyId())).isEmpty();
+            assertThat(dialogs.get(mom.telegramUserId())).isEmpty();
+        }
+
+        /** А при одном исполнителе поток прежний — вопрос про повторение на месте. */
+        @Test
+        void singleTapStillPicksOne() {
+            startAndName(mom, "Вынести мусор");
+
+            handler.handle(callback(mom), assignee(kid.id()));
+            handler.handle(callback(mom), due(NewTaskKeyboards.TOMORROW));
+
+            assertThat(sender.texts).endsWith(Texts.ASK_REPEAT);
         }
     }
 
@@ -388,7 +525,7 @@ class NewTaskHandlerTest {
                     .contains(
                             new DialogState.ChoosingDays(
                                     "Вынести мусор",
-                                    kid.id(),
+                                    List.of(kid.id()),
                                     deadline(tomorrow()),
                                     Set.of(DayOfWeek.TUESDAY)));
             assertThat(series.findActive(mom.familyId())).isEmpty();
@@ -404,7 +541,7 @@ class NewTaskHandlerTest {
             assertThat(dialogs.get(mom.telegramUserId()))
                     .contains(
                             new DialogState.ChoosingDays(
-                                    "Вынести мусор", kid.id(), deadline(tomorrow()), Set.of()));
+                                    "Вынести мусор", List.of(kid.id()), deadline(tomorrow()), Set.of()));
         }
 
         @Test
@@ -594,6 +731,19 @@ class NewTaskHandlerTest {
 
     private static CallbackData assignee(long memberId) {
         return CallbackData.of(NewTaskKeyboards.PREFIX, NewTaskKeyboards.ASSIGNEE, memberId);
+    }
+
+    private static CallbackData many() {
+        return new CallbackData(NewTaskKeyboards.PREFIX, NewTaskKeyboards.MANY, "0");
+    }
+
+    private static CallbackData toggleAssignee(long memberId) {
+        return CallbackData.of(
+                NewTaskKeyboards.PREFIX, NewTaskKeyboards.TOGGLE_ASSIGNEE, memberId);
+    }
+
+    private static CallbackData assigneesDone() {
+        return new CallbackData(NewTaskKeyboards.PREFIX, NewTaskKeyboards.ASSIGNEES_DONE, "0");
     }
 
     private static com.familytodo.application.DueDateParser.Plan deadline(java.time.Instant dueAt) {

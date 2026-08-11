@@ -10,6 +10,7 @@ import com.familytodo.adapter.telegram.DialogState;
 import com.familytodo.adapter.telegram.DialogStateStore;
 import com.familytodo.application.DueDateParser;
 import com.familytodo.adapter.telegram.keyboard.NewTaskKeyboards;
+import com.familytodo.adapter.telegram.view.AssigneeNames;
 import com.familytodo.adapter.telegram.view.HtmlEscaper;
 import com.familytodo.adapter.telegram.view.Texts;
 import com.familytodo.adapter.telegram.view.SeriesView;
@@ -26,8 +27,12 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.EnumSet;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -104,6 +109,9 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
     public void handle(BotRequest request, CallbackData data) {
         switch (data.action()) {
             case NewTaskKeyboards.ASSIGNEE -> chooseAssignee(request, data);
+            case NewTaskKeyboards.MANY -> openAssigneePicker(request);
+            case NewTaskKeyboards.TOGGLE_ASSIGNEE -> toggleAssignee(request, data);
+            case NewTaskKeyboards.ASSIGNEES_DONE -> finishAssigneePicker(request);
             case NewTaskKeyboards.DUE -> chooseDue(request, data);
             case NewTaskKeyboards.REPEAT -> chooseRepeat(request, data);
             case NewTaskKeyboards.DAY -> toggleDay(request, data);
@@ -138,9 +146,70 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
             return;
         }
 
+        askDue(request, awaiting.title(), List.of(data.longArgument()));
+    }
+
+    private void openAssigneePicker(BotRequest request) {
+        DialogState state = dialogs.get(request.telegramUserId()).orElse(null);
+        if (!(state instanceof DialogState.AwaitingAssignee awaiting)) {
+            expired(request);
+            return;
+        }
+
         dialogs.put(
                 request.telegramUserId(),
-                new DialogState.AwaitingDueDate(awaiting.title(), data.longArgument()));
+                new DialogState.ChoosingAssignees(awaiting.title(), List.of()));
+        sender.send(
+                request.chatId(),
+                Texts.ASK_ASSIGNEES,
+                NewTaskKeyboards.someAssignees(
+                        families.roster(request.requireMember()), List.of()));
+    }
+
+    private void toggleAssignee(BotRequest request, CallbackData data) {
+        DialogState state = dialogs.get(request.telegramUserId()).orElse(null);
+        if (!(state instanceof DialogState.ChoosingAssignees choosing)) {
+            expired(request);
+            return;
+        }
+
+        List<Long> chosen = new ArrayList<>(choosing.chosen());
+        if (!chosen.remove(data.longArgument())) {
+            chosen.add(data.longArgument());
+        }
+
+        dialogs.put(
+                request.telegramUserId(),
+                new DialogState.ChoosingAssignees(choosing.title(), chosen));
+        sender.send(
+                request.chatId(),
+                Texts.ASK_ASSIGNEES,
+                NewTaskKeyboards.someAssignees(
+                        families.roster(request.requireMember()), chosen));
+    }
+
+    private void finishAssigneePicker(BotRequest request) {
+        DialogState state = dialogs.get(request.telegramUserId()).orElse(null);
+        if (!(state instanceof DialogState.ChoosingAssignees choosing)) {
+            expired(request);
+            return;
+        }
+        if (choosing.chosen().isEmpty()) {
+            // состояние не сбрасываем: человек не передумал, а ещё никого не отметил
+            sender.send(
+                    request.chatId(),
+                    Texts.PICK_AT_LEAST_ONE_ASSIGNEE,
+                    NewTaskKeyboards.someAssignees(
+                            families.roster(request.requireMember()), List.of()));
+            return;
+        }
+
+        askDue(request, choosing.title(), choosing.chosen());
+    }
+
+    private void askDue(BotRequest request, String title, List<Long> assigneeIds) {
+        dialogs.put(
+                request.telegramUserId(), new DialogState.AwaitingDueDate(title, assigneeIds));
         sender.send(request.chatId(), Texts.ASK_DUE, NewTaskKeyboards.dueDates());
     }
 
@@ -155,7 +224,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
             dialogs.put(
                     request.telegramUserId(),
                     new DialogState.AwaitingCustomDueDate(
-                            awaiting.title(), awaiting.assigneeId()));
+                            awaiting.title(), awaiting.assigneeIds()));
             sender.send(request.chatId(), Texts.ASK_CUSTOM_DUE);
             return;
         }
@@ -172,7 +241,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         askRepeat(
                 request,
                 awaiting.title(),
-                awaiting.assigneeId(),
+                awaiting.assigneeIds(),
                 new DueDateParser.Plan(dueAt, null, null, null));
     }
 
@@ -192,7 +261,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
             return true;
         }
 
-        askRepeat(request, awaiting.title(), awaiting.assigneeId(), plan.get());
+        askRepeat(request, awaiting.title(), awaiting.assigneeIds(), plan.get());
         return true;
     }
 
@@ -201,14 +270,22 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
      * сразу, без лишнего шага.
      */
     private void askRepeat(
-            BotRequest request, String title, long assigneeId, DueDateParser.Plan plan) {
+            BotRequest request, String title, List<Long> assigneeIds, DueDateParser.Plan plan) {
         if (moment(plan) == null) {
             // ни срока, ни интервала — повторять нечего
-            create(request, title, assigneeId, plan);
+            create(request, title, assigneeIds, plan, null);
+            return;
+        }
+        // ⚠️ Повторение доступно, только когда исполнитель один: серия хранит одного, и
+        // делать её на нескольких сейчас не просили. Молча пропустить шаг нельзя — человек
+        // не поймёт, почему у одного дела вопрос был, а у другого нет.
+        if (assigneeIds.size() > 1) {
+            create(request, title, assigneeIds, plan, Texts.NO_REPEAT_FOR_SEVERAL);
             return;
         }
         dialogs.put(
-                request.telegramUserId(), new DialogState.AwaitingRepeat(title, assigneeId, plan));
+                request.telegramUserId(),
+                new DialogState.AwaitingRepeat(title, assigneeIds, plan));
         sender.send(request.chatId(), Texts.ASK_REPEAT, NewTaskKeyboards.repeatOptions());
     }
 
@@ -231,7 +308,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
 
         switch (data.argument()) {
             case NewTaskKeyboards.ONCE ->
-                    create(request, awaiting.title(), awaiting.assigneeId(), awaiting.plan());
+                    create(request, awaiting.title(), awaiting.assigneeIds(), awaiting.plan(), null);
             case NewTaskKeyboards.DAILY -> createSeries(request, awaiting, Recurrence.daily());
             case NewTaskKeyboards.WEEKDAYS -> createSeries(request, awaiting, Recurrence.weekdays());
             case NewTaskKeyboards.PICK_DAYS -> openPicker(request, awaiting);
@@ -243,7 +320,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         dialogs.put(
                 request.telegramUserId(),
                 new DialogState.ChoosingDays(
-                        awaiting.title(), awaiting.assigneeId(), awaiting.plan(), Set.of()));
+                        awaiting.title(), awaiting.assigneeIds(), awaiting.plan(), Set.of()));
         sender.send(request.chatId(), Texts.ASK_REPEAT, NewTaskKeyboards.dayPicker(Set.of()));
     }
 
@@ -264,7 +341,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         dialogs.put(
                 request.telegramUserId(),
                 new DialogState.ChoosingDays(
-                        choosing.title(), choosing.assigneeId(), choosing.plan(), days));
+                        choosing.title(), choosing.assigneeIds(), choosing.plan(), days));
         sender.send(request.chatId(), Texts.ASK_REPEAT, NewTaskKeyboards.dayPicker(days));
     }
 
@@ -285,7 +362,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         createSeries(
                 request,
                 new DialogState.AwaitingRepeat(
-                        choosing.title(), choosing.assigneeId(), choosing.plan()),
+                        choosing.title(), choosing.assigneeIds(), choosing.plan()),
                 Recurrence.on(choosing.days()));
     }
 
@@ -310,7 +387,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         TaskSeries created =
                 seriesService.create(
                         creator,
-                        awaiting.assigneeId(),
+                        awaiting.assigneeIds().getFirst(),
                         awaiting.title(),
                         recurrence,
                         start.toLocalTime(),
@@ -328,9 +405,13 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
     }
 
     private void create(
-            BotRequest request, String title, long assigneeId, DueDateParser.Plan plan) {
+            BotRequest request,
+            String title,
+            List<Long> assigneeIds,
+            DueDateParser.Plan plan,
+            String note) {
         Member creator = request.requireMember();
-        Task task = tasks.create(creator, assigneeId, title, plan.dueAt());
+        Task task = tasks.create(creator, assigneeIds, title, plan.dueAt());
 
         if (plan.startsAt() != null || plan.location() != null) {
             // интервал и место живут в самой задаче, а не в сроке
@@ -340,8 +421,24 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         dialogs.clear(request.telegramUserId());
         log.info("task {} created in family {}", task.id(), task.familyId());
 
-        sender.send(
-                request.chatId(), "Записал: <b>" + HtmlEscaper.escape(task.title()) + "</b>");
+        StringBuilder out =
+                new StringBuilder("Записал: <b>" + HtmlEscaper.escape(task.title()) + "</b>");
+        // кого поручили, повторяем только при нескольких: при одном человек это и так помнит,
+        // а лишняя строка в подтверждении на каждое дело — шум
+        if (task.assignments().size() > 1) {
+            out.append("\nДелают: ")
+                    .append(
+                            AssigneeNames.of(
+                                    task,
+                                    families.roster(creator).stream()
+                                            .collect(
+                                                    Collectors.toMap(
+                                                            Member::id, Function.identity()))));
+        }
+        if (note != null) {
+            out.append('\n').append(note);
+        }
+        sender.send(request.chatId(), out.toString());
     }
 
     private void expired(BotRequest request) {

@@ -123,13 +123,13 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
     }
 
     private void askAssignee(BotRequest request, Member actor, TaskRef ref) {
-        editable(actor, ref);
+        Task task = editable(actor, ref);
         dialogs.put(
                 request.telegramUserId(), new DialogState.EditingTask(ref.taskId(), ref.kind()));
         edit(
                 request,
-                Texts.ASK_ASSIGNEE,
-                TaskEditView.assignees(families.roster(actor)));
+                Texts.ASK_ASSIGNEES_EDIT,
+                TaskEditView.assignees(task, families.roster(actor), ref.kind()));
     }
 
     private void askSlot(BotRequest request, Member actor, TaskRef ref) {
@@ -232,16 +232,49 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
         return true;
     }
 
-    private void setAssignee(BotRequest request, Member actor, long newAssigneeId) {
+    /**
+     * Тап переключает: числится человек исполнителем — снимаем, не числится — добавляем.
+     *
+     * <p>⚠️ Кто сейчас в списке, спрашиваем у задачи, а не у подписи нажатой кнопки:
+     * {@code callback_data} приходит подделываемой строкой, и старая клавиатура у человека на
+     * экране могла устареть — состав мог поменять другой родитель со своего телефона.
+     *
+     * <p>Клавиатура перерисовывается на месте, а в меню не возвращаемся: состав часто правят
+     * несколькими нажатиями подряд.
+     */
+    private void setAssignee(BotRequest request, Member actor, long memberId) {
         DialogState state = dialogs.get(request.telegramUserId()).orElse(null);
         if (!(state instanceof DialogState.EditingTask editing)) {
             expired(request);
             return;
         }
 
-        Task updated = tasks.reassign(actor, editing.taskId(), newAssigneeId);
-        log.info("task {} reassigned by member {}", updated.id(), actor.id());
-        finish(request, actor, updated, editing.kind());
+        Task task = tasks.findVisible(actor, editing.taskId());
+        boolean onIt =
+                task.assignments().stream()
+                        .anyMatch(assignment -> assignment.memberId() == memberId);
+
+        // Последнего снять нельзя, а кнопка у него всё равно отмечена — она показывает состав,
+        // а не то, что с ним можно сделать. Отвечаем словами: домен здесь бросил бы исключение,
+        // и человек увидел бы «что-то пошло не так» на совершенно понятном нажатии.
+        if (onIt && task.assignments().size() == 1) {
+            edit(
+                    request,
+                    Texts.LAST_ASSIGNEE_STAYS,
+                    TaskEditView.assignees(task, families.roster(actor), editing.kind()));
+            return;
+        }
+
+        Task updated =
+                onIt
+                        ? tasks.unassign(actor, editing.taskId(), memberId)
+                        : tasks.assign(actor, editing.taskId(), memberId);
+        log.info("task {} assignees changed by member {}", updated.id(), actor.id());
+
+        edit(
+                request,
+                Texts.ASK_ASSIGNEES_EDIT,
+                TaskEditView.assignees(updated, families.roster(actor), editing.kind()));
     }
 
     private void confirmDeletion(BotRequest request, Member actor, TaskRef ref) {

@@ -4,7 +4,6 @@ import com.familytodo.application.port.MemberRepository;
 import com.familytodo.application.port.Notifier;
 import com.familytodo.application.port.TaskRepository;
 import com.familytodo.domain.Assignee;
-import com.familytodo.domain.Assignment;
 import com.familytodo.domain.DomainException;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
@@ -123,30 +122,6 @@ public class TaskService {
         Task task = load(actor, taskId);
         task.edit(actor.asActor(), title, dueAt);
         return tasks.save(task);
-    }
-
-    /**
-     * Смена исполнителя. Уведомляются обе стороны: новый — что на нём дело, прежние — что с них
-     * сняли. Молча переложить просьбу на другого нельзя, иначе первый продолжит держать её в голове.
-     */
-    public Task reassign(Member actor, long taskId, long newAssigneeId) {
-        Task task = load(actor, taskId);
-        Member newAssignee = requireActiveMember(actor.familyId(), newAssigneeId);
-
-        List<Assignment> previous =
-                task.reassign(
-                        actor.asActor(), new Assignee(newAssignee.id(), newAssignee.role()));
-        Task saved = tasks.save(task);
-
-        for (Assignment gone : previous) {
-            if (gone.memberId() != newAssignee.id()) {
-                notifyMember(actor, gone.memberId(), r -> notifier.taskUnassigned(r, saved));
-            }
-        }
-        if (previous.stream().noneMatch(gone -> gone.memberId() == newAssignee.id())) {
-            notifyMember(actor, newAssignee.id(), r -> notifier.taskAssigned(r, saved));
-        }
-        return saved;
     }
 
     /** Поручить дело ещё одному — круг исполнителей расширяется, прежние остаются. */
