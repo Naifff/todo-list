@@ -103,9 +103,7 @@ public final class Texts {
     public static final String TASK_TITLE_TOO_LONG =
             "Слишком длинно. До 200 символов — это просьба, а не инструкция.";
 
-    public static final String ASK_ASSIGNEE = "Кого попросить?";
-
-    public static final String ASK_ASSIGNEES = "Кого попросить? Отметьте всех и нажмите «Готово».";
+    public static final String ASK_ASSIGNEES = "Кого попросить? Можно отметить нескольких.";
 
     /** В правке «Готово» не нужно: каждое нажатие уже применено, отмеченные — текущий состав. */
     public static final String ASK_ASSIGNEES_EDIT =

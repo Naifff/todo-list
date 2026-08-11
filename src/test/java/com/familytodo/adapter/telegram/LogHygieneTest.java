@@ -281,7 +281,16 @@ class LogHygieneTest {
     private Task createTask() {
         newTask.handle(command(mom));
         newTask.continueDialog(text(mom, TITLE));
-        newTask.handle(callback(mom), new CallbackData(NewTaskKeyboards.PREFIX, NewTaskKeyboards.ASSIGNEE, String.valueOf(kid.id())));
+        newTask.handle(
+                callback(mom),
+                new CallbackData(
+                        NewTaskKeyboards.PREFIX,
+                        NewTaskKeyboards.TOGGLE_ASSIGNEE,
+                        String.valueOf(kid.id())));
+        newTask.handle(
+                callback(mom),
+                new CallbackData(
+                        NewTaskKeyboards.PREFIX, NewTaskKeyboards.ASSIGNEES_DONE, "0"));
         newTask.handle(
                 callback(mom),
                 new CallbackData(
