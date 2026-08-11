@@ -365,6 +365,7 @@ public final class CalendarHtmlRenderer {
                         .append("\"><span class=\"at\">")
                         .append(entry.startLabel())
                         .append("</span> ")
+                        .append(statusMark(task.status()))
                         .append(escape(task.title()))
                         .append("</div>\n");
             }
@@ -598,6 +599,24 @@ public final class CalendarHtmlRenderer {
             case OPEN -> "open";
             case DONE -> "done";
             case DECLINED -> "declined";
+        };
+    }
+
+    /**
+     * Пометка статуса в плашке месячной сетки.
+     *
+     * <p>⚠️ Нужна только истории и появилась из-за неё. У закрытых дел плашка серая независимо от
+     * статуса, а в истории закрыты <b>все</b> — месяц выходил ровным серым полем, где «сделано» и
+     * «отказ» неотличимы. Ровно то, ради чего историю и открывают.
+     *
+     * <p>Знаком, а не словом: в плашке месяца ширины хватает на время и название, и «сделано»
+     * съело бы название целиком. В сетке с осью часов статус подписан словом — там место есть.
+     */
+    private static String statusMark(TaskStatus status) {
+        return switch (status) {
+            case OPEN -> "";
+            case DONE -> "✓ ";
+            case DECLINED -> "✕ ";
         };
     }
 

@@ -555,6 +555,79 @@ class AgendaHandlerTest {
             assertThat(sender.documents.getFirst().fileName()).contains("history").contains("30d");
         }
 
+        /** У истории те же две формы, что и у расписания вперёд: выбирает человек. */
+        @Test
+        void historyComesAsAGridToo() {
+            task("Вчерашнее", "2026-08-06T16:00:00Z");
+            sender.clear();
+
+            handler.handle(callback(mom), pastGrid(7));
+
+            assertThat(sender.documents).hasSize(1);
+            assertThat(document(0)).contains("Вчерашнее");
+        }
+
+        /** За месяц сетка это месячная раскладка неделями, а не ось часов на тридцать дней. */
+        @Test
+        void aMonthOfHistoryUsesTheMonthGridNotTheHourAxis() {
+            handler.handle(callback(mom), pastGrid(30));
+
+            assertThat(document(0)).contains("class=\"month\"");
+        }
+
+        /**
+         * ⚠️ Форма обязана быть в имени файла, как и горизонт: под одним именем телефон открывает
+         * ранее скачанный файл, и «сеткой» показывается вчерашним списком. Сервер при этом отдаёт
+         * правильный документ, поэтому проверка содержимого такое не ловит.
+         */
+        @Test
+        void gridAndListHistoryHaveDifferentFileNames() {
+            handler.handle(callback(mom), pastGrid(7));
+            String grid = sender.documents.getFirst().fileName();
+            sender.clear();
+
+            handler.handle(callback(mom), past(7));
+            String list = sender.documents.getFirst().fileName();
+
+            assertThat(grid).isNotEqualTo(list);
+        }
+
+        /**
+         * ⚠️ У истории свой набор горизонтов. «За день назад» кнопкой не предлагается, но 1 есть
+         * среди горизонтов вперёд — и проверка, взявшая не тот набор, пропустила бы такой запрос.
+         * Видимого следа это не оставляет: файл придёт, просто за день, которого никто не просил.
+         */
+        @Test
+        void aHorizonThatOnlyExistsGoingForwardIsRejected() {
+            assertThatThrownBy(() -> handler.handle(callback(mom), past(1)))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> handler.handle(callback(mom), pastGrid(3)))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        void aForgedHorizonIsRejectedForTheGridToo() {
+            assertThatThrownBy(() -> handler.handle(callback(mom), pastGrid(365)))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        void theKeyboardOffersBothFormsOfHistory() {
+            handler.handle(command(mom));
+
+            List<String> labels = new ArrayList<>();
+            sender.markups
+                    .getFirst()
+                    .getKeyboard()
+                    .forEach(row -> row.forEach(button -> labels.add(button.getText())));
+
+            assertThat(labels)
+                    .anyMatch(label -> label.contains("Неделя") && label.contains("сеткой"))
+                    .anyMatch(label -> label.contains("Неделя") && label.contains("списком"))
+                    .anyMatch(label -> label.contains("Месяц") && label.contains("сеткой"))
+                    .anyMatch(label -> label.contains("Месяц") && label.contains("списком"));
+        }
+
         @Test
         void theKeyboardOffersHistory() {
             handler.handle(command(mom));
@@ -564,7 +637,7 @@ class AgendaHandlerTest {
                     .getFirst()
                     .getKeyboard()
                     .forEach(row -> row.forEach(button -> labels.add(button.getText())));
-            assertThat(labels).anyMatch(label -> label.contains("Было"));
+            assertThat(labels).anyMatch(label -> label.contains("Неделя"));
         }
 
         private String document(int index) {
@@ -592,6 +665,10 @@ class AgendaHandlerTest {
     }
 
     private static CallbackData past(int days) {
+        return new CallbackData(AgendaView.PREFIX, AgendaView.PAST_LIST, Integer.toString(days));
+    }
+
+    private static CallbackData pastGrid(int days) {
         return new CallbackData(AgendaView.PREFIX, AgendaView.PAST, Integer.toString(days));
     }
 

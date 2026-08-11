@@ -158,6 +158,49 @@ class CalendarHtmlRendererTest {
     }
 
     @Nested
+    class MonthGridStatus {
+
+        /**
+         * ⚠️ В истории закрыты все дела, а закрытая плашка серая независимо от статуса: без
+         * пометки месяц выходит ровным серым полем, где «сделано» и «отказ» неотличимы — ровно то,
+         * ради чего историю и открывают.
+         */
+        @Test
+        void closedTasksAreMarkedInTheMonthGrid() {
+            Task done =
+                    task(
+                            "Школа",
+                            null,
+                            MONDAY.atStartOfDay(MOSCOW).plusHours(8).toInstant(),
+                            MONDAY.atStartOfDay(MOSCOW).plusHours(14).toInstant(),
+                            null,
+                            TaskStatus.DONE,
+                            null);
+            Task refused =
+                    task(
+                            "Забрать посылку",
+                            null,
+                            MONDAY.atStartOfDay(MOSCOW).plusHours(16).toInstant(),
+                            MONDAY.atStartOfDay(MOSCOW).plusHours(17).toInstant(),
+                            null,
+                            TaskStatus.DECLINED,
+                            "работал до восьми");
+
+            String html = render(List.of(done, refused), List.of(), 30);
+
+            assertThat(html).contains("✓ Школа").contains("✕ Забрать посылку");
+        }
+
+        /** Открытому делу помечать нечего: расписание вперёд состоит из них целиком. */
+        @Test
+        void openTasksCarryNoMark() {
+            String html = render(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 30);
+
+            assertThat(html).contains("Школа").doesNotContain("✓").doesNotContain("✕");
+        }
+    }
+
+    @Nested
     class Completeness {
 
         @Test

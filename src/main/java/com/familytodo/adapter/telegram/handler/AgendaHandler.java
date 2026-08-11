@@ -66,19 +66,24 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
     public void handle(BotRequest request, CallbackData data) {
         boolean grid = AgendaView.PAGE.equals(data.action());
         boolean list = AgendaView.LIST.equals(data.action());
-        boolean past = AgendaView.PAST.equals(data.action());
+        boolean pastList = AgendaView.PAST_LIST.equals(data.action());
+        boolean past = AgendaView.PAST.equals(data.action()) || pastList;
+
+        // ⚠️ Новое действие надо вписать сюда, иначе оно молча ничего не делает: нажатие
+        // отвечено роутером, в журнале пусто, и кнопка выглядит просто неработающей
         if (!grid && !list && !past && !AgendaView.DAYS.equals(data.action())) {
             return;
         }
         int days = (int) data.longArgument();
-        // горизонт приходит от клиента: чужое число не должно превращаться в запрос на год
+        // горизонт приходит от клиента: чужое число не должно превращаться в запрос на год.
+        // У истории свой набор — «за день» назад не предлагается, значит и принимать нечего
         List<Integer> allowed = past ? AgendaView.PAST_HORIZONS : AgendaView.HORIZONS;
         if (!allowed.contains(days)) {
             throw new IllegalArgumentException("unsupported horizon " + days);
         }
 
         if (past) {
-            sendHistory(request, request.requireMember(), days);
+            sendHistory(request, request.requireMember(), days, pastList);
             return;
         }
         if (grid || list) {
@@ -121,10 +126,13 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
     }
 
     /**
-     * История — списком, а не сеткой: за месяц сетка нечитаема, а вопрос к истории обычно «что
-     * было», а не «во сколько».
+     * История — то же расписание, но назад, и с тем же выбором формы.
+     *
+     * <p>Раньше приходила только списком: считалось, что за месяц сетка нечитаема. Это верно про
+     * <b>ось часов</b>, но сетка за месяц — не ось, а раскладка неделями: она читается, и просить
+     * её человек вправе.
      */
-    private void sendHistory(BotRequest request, Member viewer, int days) {
+    private void sendHistory(BotRequest request, Member viewer, int days, boolean asList) {
         ZoneId zone = families.family(viewer).timezone();
         LocalDate today = LocalDate.ofInstant(clock.instant(), zone);
         LocalDate from = today.minusDays(days);
@@ -137,11 +145,16 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
                 families.roster(viewer).stream()
                         .collect(Collectors.toMap(Member::id, Function.identity()));
 
-        byte[] html = CalendarHtmlRenderer.renderList(past, List.of(), byId, zone, from, days);
+        byte[] html =
+                asList
+                        ? CalendarHtmlRenderer.renderList(past, List.of(), byId, zone, from, days)
+                        : CalendarHtmlRenderer.render(past, List.of(), byId, zone, from, days);
         sender.sendDocument(
                 request.chatId(),
                 html,
-                "history-" + days + "d-" + today + ".html",
+                // ⚠️ форма в имени обязательна наравне с горизонтом: под одним именем телефон
+                // открывает ранее скачанный файл, и «сеткой» показывается вчерашним списком
+                "history-" + (asList ? "list" : "grid") + "-" + days + "d-" + today + ".html",
                 AgendaView.historyCaption(days));
     }
 
