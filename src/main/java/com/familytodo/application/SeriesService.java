@@ -152,7 +152,7 @@ public class SeriesService {
      * <p>Закрытые остаются: {@code DONE} и {@code DECLINED} — история семьи, и остановка правила не
      * повод её стирать. Строка серии тоже остаётся: на неё ссылается эта история.
      */
-    public Stopped stop(Member actor, long seriesId) {
+    public Changed stop(Member actor, long seriesId) {
         TaskSeries rule = require(actor, seriesId);
 
         rule.stop(actor.asActor(), clock.instant());
@@ -162,14 +162,47 @@ public class SeriesService {
                 tasks.deleteOpenOccurrencesFrom(
                         rule.familyId(), rule.id(), family(actor.familyId()).today(clock.instant()));
         log.info("series {} stopped, {} future occurrences removed", rule.id(), removed);
-        return new Stopped(rule, removed);
+        return new Changed(rule, removed);
+    }
+
+    /**
+     * Поставить или снять верхнюю границу: до какого числа повторять.
+     *
+     * <p>Вторая форма остановки, а не правка серии: она умеет только сдвигать конец. Уже созданные
+     * вхождения за границей убираются, а горизонт заполняется сразу — снятая граница иначе ожила бы
+     * только к следующему часу, и человек решил бы, что кнопка не сработала.
+     *
+     * @param endsOn последний день включительно; {@code null} — без конца
+     */
+    public Changed endBy(Member actor, long seriesId, LocalDate endsOn) {
+        TaskSeries rule = require(actor, seriesId);
+
+        rule.endBy(actor.asActor(), endsOn, clock.instant());
+        series.save(rule);
+
+        Family family = family(actor.familyId());
+        LocalDate today = family.today(clock.instant());
+
+        int removed = 0;
+        if (endsOn != null) {
+            // ⚠️ убирается только будущее, как и при остановке: просроченное открытое вхождение —
+            // это несделанное дело, а не лишняя строка, и граница задним числом его не отменяет
+            LocalDate from = endsOn.plusDays(1);
+            removed =
+                    tasks.deleteOpenOccurrencesFrom(
+                            rule.familyId(), rule.id(), from.isBefore(today) ? today : from);
+        }
+        materialise(rule, family, clock.instant());
+
+        log.info("series {} limited, {} occurrences removed", rule.id(), removed);
+        return new Changed(rule, removed);
     }
 
     /**
      * Сколько дел ушло — часть ответа, а не подробность для журнала: остановка вечерней тренировки
      * убирает из списков и календаря семьи десяток дел, и человек вправе увидеть это числом.
      */
-    public record Stopped(TaskSeries series, int removed) {}
+    public record Changed(TaskSeries series, int removed) {}
 
     /** Заполнить горизонт по всем семьям. Вызывается джобой, «смотрящего» у неё нет. */
     public void materialiseAll() {

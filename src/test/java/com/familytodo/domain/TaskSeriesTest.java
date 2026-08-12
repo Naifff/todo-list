@@ -185,6 +185,29 @@ class TaskSeriesTest {
         }
 
         @Test
+        void endingASeriesNeedsTheSameRightAsStoppingIt() {
+            TaskSeries series =
+                    TaskSeries.create(
+                            5L,
+                            FAMILY,
+                            "Вынести мусор",
+                            MOM_ID,
+                            List.of(new Assignee(99L, Role.PARENT)),
+                            Recurrence.daily(),
+                            LocalTime.of(8, 0),
+                            null,
+                            null,
+                            MONDAY,
+                            null,
+                            NOW);
+
+            assertThatThrownBy(() -> series.endBy(KID, MONDAY.plusDays(10), NOW))
+                    .isInstanceOf(DomainException.NotPermitted.class);
+            assertThatThrownBy(() -> series.endBy(STRANGER, MONDAY.plusDays(10), NOW))
+                    .isInstanceOf(DomainException.NotPermitted.class);
+        }
+
+        @Test
         void stoppingTwiceKeepsTheFirstMoment() {
             TaskSeries series = series(Recurrence.daily(), MONDAY, null);
             series.stop(MOM, NOW);
@@ -192,6 +215,66 @@ class TaskSeriesTest {
             series.stop(MOM, NOW.plusSeconds(3600));
 
             assertThat(series.stoppedAt()).isEqualTo(NOW);
+        }
+    }
+
+    /**
+     * Верхняя граница — вторая форма остановки, а не правка серии: она умеет только укорачивать
+     * будущее. «Остановить» — прекратить сейчас, «до какого числа» — прекратить тогда-то.
+     */
+    @Nested
+    class EndDate {
+
+        @Test
+        void aSeriesStopsProducingOccurrencesAfterItsEndDate() {
+            TaskSeries series = series(Recurrence.daily(), MONDAY, null);
+
+            series.endBy(MOM, MONDAY.plusDays(2), NOW);
+
+            assertThat(series.endsOn()).isEqualTo(MONDAY.plusDays(2));
+            assertThat(series.occurrencesBetween(MONDAY, MONDAY.plusDays(10)))
+                    .containsExactly(MONDAY, MONDAY.plusDays(1), MONDAY.plusDays(2));
+        }
+
+        /** Граница в прошлом — законный способ сказать «уже всё»: серия просто больше не даёт дат. */
+        @Test
+        void anEndDateInThePastLeavesNoOccurrencesAhead() {
+            TaskSeries series = series(Recurrence.daily(), MONDAY, null);
+
+            series.endBy(MOM, MONDAY, NOW);
+
+            assertThat(series.occurrencesBetween(MONDAY.plusDays(1), MONDAY.plusDays(10))).isEmpty();
+        }
+
+        @Test
+        void anEndBeforeTheStartIsRejected() {
+            TaskSeries series = series(Recurrence.daily(), MONDAY, null);
+
+            assertThatThrownBy(() -> series.endBy(MOM, MONDAY.minusDays(1), NOW))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThat(series.endsOn()).isNull();
+        }
+
+        /** Снять границу тоже можно: «до конца мая» превращается в «пока не отменим». */
+        @Test
+        void theEndDateCanBeRemoved() {
+            TaskSeries series = series(Recurrence.daily(), MONDAY, MONDAY.plusDays(2));
+
+            series.endBy(MOM, null, NOW);
+
+            assertThat(series.endsOn()).isNull();
+            assertThat(series.occurrencesBetween(MONDAY, MONDAY.plusDays(10))).hasSize(11);
+        }
+
+        /** Остановленную серию границей не воскресить: остановка сильнее любой даты. */
+        @Test
+        void aStoppedSeriesStaysStopped() {
+            TaskSeries series = series(Recurrence.daily(), MONDAY, null);
+            series.stop(MOM, NOW);
+
+            series.endBy(MOM, MONDAY.plusDays(5), NOW);
+
+            assertThat(series.occurrencesBetween(MONDAY, MONDAY.plusDays(10))).isEmpty();
         }
     }
 

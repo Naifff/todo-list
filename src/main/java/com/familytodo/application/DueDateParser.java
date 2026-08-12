@@ -42,6 +42,9 @@ public class DueDateParser {
                     "^(\\d{1,2})\\.(\\d{1,2})(?:\\.(\\d{4}))?(?:\\s+(\\d{1,2}):(\\d{2}))?$");
     private static final Pattern TIME_ONLY = Pattern.compile("^(\\d{1,2}):(\\d{2})$");
 
+    private static final Pattern DATE_ONLY =
+            Pattern.compile("^(\\d{1,2})\\.(\\d{1,2})(?:\\.(\\d{4}))?$");
+
     /** «08:00-08:40 школа», «19:00 дом», «Zoom» — время необязательно, место тоже. */
     private static final Pattern SLOT =
             Pattern.compile(
@@ -75,6 +78,28 @@ public class DueDateParser {
             date = date.plusDays(1);
         }
         return at(date, DEFAULT_TIME, zone);
+    }
+
+    /**
+     * Только дата, без времени: {@code 31.05} или {@code 31.05.2027}.
+     *
+     * <p>Нужна верхней границе серии — у неё нет часа, она про день. Год без указания берётся
+     * ближайший будущий, тем же правилом, что и у сроков: «31.05» в августе означает следующий май,
+     * а не прошедший.
+     */
+    public Optional<LocalDate> parseDate(String input, ZoneId zone) {
+        if (input == null || input.isBlank()) {
+            return Optional.empty();
+        }
+        Matcher matcher = DATE_ONLY.matcher(input.trim());
+        if (!matcher.matches()) {
+            return Optional.empty();
+        }
+        return date(
+                matcher.group(1),
+                matcher.group(2),
+                matcher.group(3),
+                LocalDate.now(clock.withZone(zone)));
     }
 
     /** Пустой результат — не сбой, а «не разобрал»: ввод пользовательский и бывает любым. */

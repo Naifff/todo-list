@@ -121,7 +121,13 @@ class LogHygieneTest {
                         dialogs);
         taskService = new TaskService(tasks, members, notifier, clock);
         seriesService = new SeriesService(families, seriesRepository, tasks, members, clock);
-        seriesHandler = new SeriesHandler(seriesService, familyService, sender);
+        seriesHandler =
+                new SeriesHandler(
+                        seriesService,
+                        familyService,
+                        new DueDateParser(clock),
+                        dialogs,
+                        sender);
         newTask =
                 new NewTaskHandler(
                         taskService,

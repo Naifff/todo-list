@@ -31,6 +31,10 @@ public final class SeriesView {
 
     public static final String STOP_OK = "sok";
 
+    public static final String END = "e";
+
+    public static final String ENDLESS = "ne";
+
     /**
      * У «← Назад» аргумента нет — список один. Пустую строку {@link CallbackData} не принимает, а
      * заводить ради этого второй формат нечестнее, чем одна буква.
@@ -110,7 +114,15 @@ public final class SeriesView {
     }
 
     public static InlineKeyboardMarkup cardKeyboard(TaskSeries rule) {
+        InlineKeyboardRow limits = new InlineKeyboardRow(button(Texts.SERIES_END, END, rule.id()));
+        // ⚠️ «Убрать границу» появляется, только когда граница есть: постоянная кнопка, которая
+        // ничего не делает, читается как сломанная — ответить «нечего убирать» отсюда нечем
+        if (rule.endsOn() != null) {
+            limits.add(button(Texts.SERIES_ENDLESS, ENDLESS, rule.id()));
+        }
+
         return InlineKeyboardMarkup.builder()
+                .keyboardRow(limits)
                 .keyboardRow(new InlineKeyboardRow(button(Texts.SERIES_STOP, STOP, rule.id())))
                 .keyboardRow(new InlineKeyboardRow(backButton()))
                 .build();
@@ -138,6 +150,11 @@ public final class SeriesView {
         return removed == 0
                 ? Texts.SERIES_STOPPED
                 : Texts.SERIES_STOPPED + " Убрано будущих дел: " + removed + ".";
+    }
+
+    /** То же число после сдвига границы: укороченная серия убирает дела ровно так же. */
+    public static String limited(int removed) {
+        return removed == 0 ? "" : "\n\nУбрано будущих дел: " + removed + ".";
     }
 
     private static InlineKeyboardButton button(String label, String action, long seriesId) {

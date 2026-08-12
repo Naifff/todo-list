@@ -343,6 +343,62 @@ class SeriesMaterializationJobIT extends AbstractSqliteIT {
     }
 
     /**
+     * Верхняя граница — отложенная остановка: серия доживает до названного дня и дальше не идёт.
+     * Проверяется на настоящей базе, потому что интересна именно связка «граница + джоба»: правило в
+     * домене можно было бы соблюсти и без единой убранной строки.
+     */
+    @Nested
+    class EndDate {
+
+        @Test
+        void theJobCreatesNothingBeyondTheBound() {
+            TaskSeries daily = daily(LocalTime.of(8, 0));
+
+            job.endBy(mom, daily.id(), TODAY.plusDays(2));
+            job.materialiseAll();
+
+            assertThat(occurrences()).hasSize(3);
+            assertThat(countOn(TODAY.plusDays(3))).isZero();
+        }
+
+        @Test
+        void occurrencesAlreadyCreatedBeyondTheBoundAreRemoved() {
+            TaskSeries daily = daily(LocalTime.of(8, 0));
+            job.materialiseAll();
+            assertThat(occurrences()).hasSizeGreaterThan(3);
+
+            job.endBy(mom, daily.id(), TODAY.plusDays(2));
+
+            assertThat(occurrences()).hasSize(3);
+        }
+
+        /** История не трогается и здесь: закрытое вхождение за границей остаётся. */
+        @Test
+        void closedOccurrencesBeyondTheBoundSurvive() {
+            TaskSeries daily = daily(LocalTime.of(8, 0));
+            job.materialiseAll();
+            Task later = occurrences().get(5);
+            later.complete(kid.asActor(), NOW);
+            tasks.save(later);
+
+            job.endBy(mom, daily.id(), TODAY.plusDays(2));
+
+            assertThat(tasks.findById(family.id(), later.id())).isPresent();
+        }
+
+        /** Снятая граница возвращает горизонт сразу, а не к следующему часу джобы. */
+        @Test
+        void removingTheBoundRefillsTheHorizonImmediately() {
+            TaskSeries daily = daily(LocalTime.of(8, 0));
+            job.endBy(mom, daily.id(), TODAY.plusDays(2));
+
+            job.endBy(mom, daily.id(), null);
+
+            assertThat(occurrences()).hasSize(SeriesService.HORIZON_DAYS);
+        }
+    }
+
+    /**
      * Смена таймзоны семьи не двигает то, что уже материализовано.
      *
      * <p>Момент дела абсолютен, и переписывать его задним числом значило бы переносить встречи,

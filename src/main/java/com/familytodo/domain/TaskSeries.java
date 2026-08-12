@@ -35,9 +35,9 @@ public final class TaskSeries {
     private final Duration duration;
     private final String location;
     private final LocalDate startsOn;
-    private final LocalDate endsOn;
     private final Instant createdAt;
 
+    private LocalDate endsOn;
     private Instant stoppedAt;
 
     private TaskSeries(
@@ -164,6 +164,35 @@ public final class TaskSeries {
      * задачи, чтобы «кто чем распоряжается» не зависело от того, повторяется дело или нет.
      */
     public void stop(Actor actor, Instant now) {
+        requireMayManage(actor);
+        if (stoppedAt == null) {
+            // повторная остановка не переписывает момент: он попадает в историю
+            stoppedAt = now;
+        }
+    }
+
+    /**
+     * Верхняя граница: до какого числа повторять.
+     *
+     * <p>Это <b>вторая форма остановки</b>, а не правка серии — запрет на правку из v1 в силе.
+     * Разница только в моменте: «остановить» прекращает сейчас, граница — тогда-то. Ни то, ни другое
+     * не трогает уже случившееся, и обе операции требуют одного права.
+     *
+     * <p>{@code null} снимает границу: «до конца мая» превращается обратно в «пока не отменим».
+     * Остановленную серию граница не воскрешает — остановка сильнее любой даты.
+     *
+     * @param endsOn последний день, включительно; {@code null} — без конца
+     */
+    public void endBy(Actor actor, LocalDate endsOn, Instant now) {
+        requireMayManage(actor);
+        this.endsOn = requireEnd(startsOn, endsOn);
+    }
+
+    /**
+     * Кто распоряжается правилом: автор — или родитель, если исполнитель ребёнок. Те же правила, что
+     * у правки задачи, чтобы «кто чем распоряжается» не зависело от того, повторяется дело или нет.
+     */
+    private void requireMayManage(Actor actor) {
         if (!(actor instanceof Actor.MemberActor member) || member.familyId() != familyId) {
             throw new DomainException.NotPermitted("actor does not belong to this family");
         }
@@ -171,11 +200,7 @@ public final class TaskSeries {
                 member.memberId() == creatorId
                         || (member.role() == Role.PARENT && hasChildAssignee());
         if (!allowed) {
-            throw new DomainException.NotPermitted("actor may not stop this series");
-        }
-        if (stoppedAt == null) {
-            // повторная остановка не переписывает момент: он попадает в историю
-            stoppedAt = now;
+            throw new DomainException.NotPermitted("actor may not manage this series");
         }
     }
 

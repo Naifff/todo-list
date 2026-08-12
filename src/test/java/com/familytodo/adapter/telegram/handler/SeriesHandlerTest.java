@@ -7,8 +7,10 @@ import static org.mockito.Mockito.mock;
 import com.familytodo.adapter.telegram.BotRequest;
 import com.familytodo.adapter.telegram.BotSender;
 import com.familytodo.adapter.telegram.CallbackData;
+import com.familytodo.adapter.telegram.DialogStateStore;
 import com.familytodo.adapter.telegram.view.SeriesView;
 import com.familytodo.adapter.telegram.view.Texts;
+import com.familytodo.application.DueDateParser;
 import com.familytodo.application.FamilyService;
 import com.familytodo.application.SeriesService;
 import com.familytodo.application.TaskQuery;
@@ -73,7 +75,13 @@ class SeriesHandlerTest {
     void setUp() {
         FamilyService familyService = new FamilyService(families, members, tasks, notifier, clock);
         seriesService = new SeriesService(families, series, tasks, members, clock);
-        handler = new SeriesHandler(seriesService, familyService, sender);
+        handler =
+                new SeriesHandler(
+                        seriesService,
+                        familyService,
+                        new DueDateParser(clock),
+                        new DialogStateStore(),
+                        sender);
 
         mom = familyService.createFamily(100000001L, 100000001L, "Мама", "Румянцевы", MOSCOW);
         dad = join(512034878L, "Папа", Role.PARENT);
@@ -257,6 +265,109 @@ class SeriesHandlerTest {
         }
     }
 
+    /**
+     * Верхняя граница — вторая форма остановки: «до конца мая» вместо «хватит прямо сейчас». Правкой
+     * серии она не становится, укорачивать будущее — единственное, что она умеет.
+     */
+    @Nested
+    class EndDate {
+
+        @Test
+        void askingForTheDateChangesNothingYet() {
+            TaskSeries training = training();
+
+            handler.handle(callback(mom), end(training.id()));
+
+            assertThat(sender.texts.getFirst()).contains("До какого числа");
+            assertThat(seriesService.require(mom, training.id()).endsOn()).isNull();
+        }
+
+        @Test
+        void theDateBecomesTheUpperBoundAndOccurrencesBeyondItGoAway() {
+            TaskSeries training = training();
+            int before = tasks.find(everythingOpenOf(mom)).size();
+
+            handler.handle(callback(mom), end(training.id()));
+            handler.continueDialog(text(mom, "21.08"));
+
+            assertThat(seriesService.require(mom, training.id()).endsOn())
+                    .isEqualTo(LocalDate.of(2026, 8, 21));
+            // 7–21 августа, только будни: десять дел вместо сорока с лишним
+            assertThat(tasks.find(everythingOpenOf(mom))).hasSize(11).hasSizeLessThan(before);
+        }
+
+        /** Опечатка не должна отправлять человека заново открывать серию. */
+        @Test
+        void anUnparsedDateAnswersWithAHintAndKeepsWaiting() {
+            TaskSeries training = training();
+
+            handler.handle(callback(mom), end(training.id()));
+            handler.continueDialog(text(mom, "когда-нибудь"));
+
+            assertThat(sender.texts.getLast()).isEqualTo(Texts.SERIES_END_NOT_PARSED);
+            assertThat(handler.continueDialog(text(mom, "21.08"))).isTrue();
+            assertThat(seriesService.require(mom, training.id()).endsOn())
+                    .isEqualTo(LocalDate.of(2026, 8, 21));
+        }
+
+        /** «Не понял» тут соврало бы: дату мы поняли, она просто раньше начала серии. */
+        @Test
+        void aDateBeforeTheSeriesStartIsRefusedByName() {
+            TaskSeries training = training();
+
+            handler.handle(callback(mom), end(training.id()));
+            handler.continueDialog(text(mom, "01.08.2026"));
+
+            assertThat(sender.texts.getLast()).isEqualTo(Texts.SERIES_END_BEFORE_START);
+            assertThat(seriesService.require(mom, training.id()).endsOn()).isNull();
+        }
+
+        @Test
+        void removingTheBoundRefillsTheHorizon() {
+            TaskSeries training = training();
+            handler.handle(callback(mom), end(training.id()));
+            handler.continueDialog(text(mom, "21.08"));
+            int limited = tasks.find(everythingOpenOf(mom)).size();
+
+            handler.handle(callback(mom), endless(training.id()));
+
+            assertThat(seriesService.require(mom, training.id()).endsOn()).isNull();
+            assertThat(tasks.find(everythingOpenOf(mom))).hasSizeGreaterThan(limited);
+        }
+
+        /** Кнопка снятия появляется только когда есть что снимать. */
+        @Test
+        void thereIsNothingToRemoveWhileTheSeriesHasNoBound() {
+            TaskSeries training = training();
+
+            handler.handle(callback(mom), open(training.id()));
+
+            assertThat(buttonLabels(sender.keyboards.getLast()))
+                    .contains(Texts.SERIES_END)
+                    .doesNotContain(Texts.SERIES_ENDLESS);
+        }
+
+        @Test
+        void theBoundIsVisibleOnTheCardAndInTheList() {
+            TaskSeries training = training();
+            handler.handle(callback(mom), end(training.id()));
+            handler.continueDialog(text(mom, "21.08"));
+
+            handler.handle(command(mom));
+
+            assertThat(sender.texts.getLast()).contains("21.08.2026");
+        }
+
+        /** Право то же, что у остановки: исполнитель серией не распоряжается. */
+        @Test
+        void theChildTheSeriesIsAboutMayNotMoveItsEnd() {
+            TaskSeries training = training();
+
+            assertThatThrownBy(() -> handler.handle(callback(kid), endless(training.id())))
+                    .isInstanceOf(DomainException.NotPermitted.class);
+        }
+    }
+
     @Nested
     class Escaping {
 
@@ -302,6 +413,21 @@ class SeriesHandlerTest {
         return CallbackData.of(SeriesView.PREFIX, SeriesView.OPEN, seriesId);
     }
 
+    private static CallbackData end(long seriesId) {
+        return CallbackData.of(SeriesView.PREFIX, SeriesView.END, seriesId);
+    }
+
+    private static CallbackData endless(long seriesId) {
+        return CallbackData.of(SeriesView.PREFIX, SeriesView.ENDLESS, seriesId);
+    }
+
+    private static List<String> buttonLabels(InlineKeyboardMarkup markup) {
+        return markup.getKeyboard().stream()
+                .flatMap(java.util.Collection::stream)
+                .map(button -> button.getText())
+                .toList();
+    }
+
     private static CallbackData stop(long seriesId) {
         return CallbackData.of(SeriesView.PREFIX, SeriesView.STOP, seriesId);
     }
@@ -339,6 +465,19 @@ class SeriesHandlerTest {
                 Optional.empty());
     }
 
+    private BotRequest text(Member member, String written) {
+        return new BotRequest(
+                member.telegramUserId(),
+                member.privateChatId(),
+                member.displayName(),
+                Optional.of(member),
+                written,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty());
+    }
+
     private BotRequest callback(Member member) {
         return new BotRequest(
                 member.telegramUserId(),
@@ -355,6 +494,7 @@ class SeriesHandlerTest {
     private static final class RecordingSender extends BotSender {
         private final List<String> texts = new ArrayList<>();
         private final List<String> edits = new ArrayList<>();
+        private final List<InlineKeyboardMarkup> keyboards = new ArrayList<>();
 
         RecordingSender() {
             super(mock(org.telegram.telegrambots.meta.generics.TelegramClient.class));
@@ -363,6 +503,7 @@ class SeriesHandlerTest {
         void clear() {
             texts.clear();
             edits.clear();
+            keyboards.clear();
         }
 
         @Override
@@ -374,12 +515,14 @@ class SeriesHandlerTest {
         @Override
         public boolean send(long chatId, String html, InlineKeyboardMarkup markup) {
             texts.add(html);
+            keyboards.add(markup);
             return true;
         }
 
         @Override
         public void edit(long chatId, int messageId, String html, InlineKeyboardMarkup markup) {
             edits.add(html);
+            keyboards.add(markup);
         }
     }
 }

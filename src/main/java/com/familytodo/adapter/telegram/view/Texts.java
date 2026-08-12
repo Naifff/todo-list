@@ -196,6 +196,23 @@ public final class Texts {
 
     public static final String SERIES_STOPPED = "Серия остановлена.";
 
+    public static final String SERIES_END = "📅 До какого числа";
+
+    public static final String SERIES_ENDLESS = "♾ Убрать границу";
+
+    public static final String SERIES_ASK_END =
+            """
+            До какого числа повторять?
+
+            <code>31.05</code> или <code>31.05.2027</code> — последний день включительно.""";
+
+    public static final String SERIES_END_NOT_PARSED =
+            "Не понял дату. Формат: <code>31.05</code> или <code>31.05.2027</code>";
+
+    /** Отказ объясняет, что не так: «не понял» здесь соврало бы — дату мы как раз поняли. */
+    public static final String SERIES_END_BEFORE_START =
+            "Эта дата раньше, чем серия началась. Если повторять больше не нужно — «Остановить».";
+
     // --- карточка ---
 
     public static final String ASK_DECLINE_REASON = "Почему не получится?";

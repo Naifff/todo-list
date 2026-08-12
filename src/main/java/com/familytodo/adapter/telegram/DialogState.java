@@ -98,6 +98,9 @@ public sealed interface DialogState {
     /** {@code /family}: правим имя участника — ждём его текстом. */
     record AwaitingMemberName(long memberId) implements DialogState {}
 
+    /** {@code /series}: нажали «До какого числа» — ждём дату текстом. */
+    record AwaitingSeriesEnd(long seriesId) implements DialogState {}
+
     /**
      * Нажали «Не могу» — ждём причину текстом.
      *
