@@ -19,6 +19,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
@@ -78,9 +80,34 @@ public class SeriesService {
             Duration duration,
             String location,
             LocalDate startsOn) {
+        return create(
+                creator,
+                List.of(assigneeId),
+                title,
+                recurrence,
+                startTime,
+                duration,
+                location,
+                startsOn);
+    }
+
+    /** Повторяющееся дело сразу нескольким: тренировка, на которую возят по очереди. */
+    public TaskSeries create(
+            Member creator,
+            List<Long> assigneeIds,
+            String title,
+            Recurrence recurrence,
+            LocalTime startTime,
+            Duration duration,
+            String location,
+            LocalDate startsOn) {
 
         requireActive(creator);
-        Member assignee = requireActiveMember(creator.familyId(), assigneeId);
+        List<Assignee> assignees = new ArrayList<>();
+        for (long assigneeId : new LinkedHashSet<>(assigneeIds)) {
+            Member member = requireActiveMember(creator.familyId(), assigneeId);
+            assignees.add(new Assignee(member.id(), member.role()));
+        }
 
         TaskSeries rule =
                 TaskSeries.create(
@@ -88,7 +115,7 @@ public class SeriesService {
                         creator.familyId(),
                         title,
                         creator.id(),
-                        new Assignee(assignee.id(), assignee.role()),
+                        assignees,
                         recurrence,
                         startTime,
                         duration,
@@ -179,7 +206,7 @@ public class SeriesService {
                     rule.familyId(),
                     rule.title(),
                     rule.creatorId(),
-                    rule.assignee(),
+                    rule.assignees(),
                     startsAt,
                     now);
         }
@@ -190,7 +217,7 @@ public class SeriesService {
                         rule.familyId(),
                         rule.title(),
                         rule.creatorId(),
-                        rule.assignee(),
+                        rule.assignees(),
                         null,
                         now);
         // расписание ставит автор серии: он же его и задал, когда заводил правило

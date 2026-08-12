@@ -263,13 +263,6 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
             create(request, title, assigneeIds, plan, null);
             return;
         }
-        // ⚠️ Повторение доступно, только когда исполнитель один: серия хранит одного, и
-        // делать её на нескольких сейчас не просили. Молча пропустить шаг нельзя — человек
-        // не поймёт, почему у одного дела вопрос был, а у другого нет.
-        if (assigneeIds.size() > 1) {
-            create(request, title, assigneeIds, plan, Texts.NO_REPEAT_FOR_SEVERAL);
-            return;
-        }
         dialogs.put(
                 request.telegramUserId(),
                 new DialogState.AwaitingRepeat(title, assigneeIds, plan));
@@ -374,7 +367,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         TaskSeries created =
                 seriesService.create(
                         creator,
-                        awaiting.assigneeIds().getFirst(),
+                        awaiting.assigneeIds(),
                         awaiting.title(),
                         recurrence,
                         start.toLocalTime(),

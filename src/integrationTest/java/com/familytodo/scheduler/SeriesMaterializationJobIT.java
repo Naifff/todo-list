@@ -104,7 +104,7 @@ class SeriesMaterializationJobIT extends AbstractSqliteIT {
                             family.id(),
                             "Отвезти детей в школу",
                             mom.id(),
-                            new Assignee(kid.id(), kid.role()),
+                            List.of(new Assignee(kid.id(), kid.role())),
                             Recurrence.daily(),
                             LocalTime.of(8, 0),
                             Duration.ofMinutes(40),
@@ -120,6 +120,69 @@ class SeriesMaterializationJobIT extends AbstractSqliteIT {
             assertThat(first.assignments().getFirst().memberId()).isEqualTo(kid.id());
             assertThat(first.location()).isEqualTo("школа");
             assertThat(first.creatorId()).isEqualTo(mom.id());
+        }
+
+        /**
+         * Повторяющееся дело на нескольких: тренировка, на которую возят по очереди.
+         *
+         * <p>⚠️ На реальном SQLite, а не на фейке: исполнители серии лежат отдельной таблицей и
+         * тянутся вторым запросом. Фейк хранит объект целиком и такую ошибку не увидел бы вовсе.
+         */
+        @Test
+        void everyOccurrenceOfASharedSeriesGoesToEveryone() {
+            series.save(
+                    TaskSeries.create(
+                            series.nextId(),
+                            family.id(),
+                            "Отвезти на тренировку",
+                            mom.id(),
+                            List.of(
+                                    new Assignee(mom.id(), mom.role()),
+                                    new Assignee(kid.id(), kid.role())),
+                            Recurrence.daily(),
+                            LocalTime.of(18, 0),
+                            Duration.ofMinutes(90),
+                            "бассейн",
+                            TODAY,
+                            null,
+                            NOW));
+
+            job.materialiseAll();
+
+            assertThat(occurrences())
+                    .isNotEmpty()
+                    .allSatisfy(
+                            occurrence ->
+                                    assertThat(occurrence.assignments())
+                                            .extracting(
+                                                    com.familytodo.domain.Assignment::memberId)
+                                            .containsExactly(mom.id(), kid.id()));
+        }
+
+        /** Порядок исполнителей переживает запись и чтение: он же порядок имён в карточке. */
+        @Test
+        void theOrderOfAssigneesSurvivesStorage() {
+            long id = series.nextId();
+            series.save(
+                    TaskSeries.create(
+                            id,
+                            family.id(),
+                            "Семейный ужин",
+                            mom.id(),
+                            List.of(
+                                    new Assignee(kid.id(), kid.role()),
+                                    new Assignee(mom.id(), mom.role())),
+                            Recurrence.daily(),
+                            LocalTime.of(19, 0),
+                            null,
+                            null,
+                            TODAY,
+                            null,
+                            NOW));
+
+            assertThat(series.findById(family.id(), id).orElseThrow().assignees())
+                    .extracting(Assignee::memberId)
+                    .containsExactly(kid.id(), mom.id());
         }
 
         /** Есть длительность — есть интервал; нет — только срок, как у обычного дела. */
@@ -148,7 +211,7 @@ class SeriesMaterializationJobIT extends AbstractSqliteIT {
                             family.id(),
                             "Курс из трёх занятий",
                             mom.id(),
-                            new Assignee(kid.id(), kid.role()),
+                            List.of(new Assignee(kid.id(), kid.role())),
                             Recurrence.daily(),
                             LocalTime.of(8, 0),
                             null,
@@ -310,7 +373,7 @@ class SeriesMaterializationJobIT extends AbstractSqliteIT {
                         family.id(),
                         "Отвезти детей в школу",
                         mom.id(),
-                        new Assignee(kid.id(), kid.role()),
+                        List.of(new Assignee(kid.id(), kid.role())),
                         Recurrence.daily(),
                         at,
                         Duration.ofMinutes(40),
@@ -327,7 +390,7 @@ class SeriesMaterializationJobIT extends AbstractSqliteIT {
                         family.id(),
                         "Daily standup",
                         mom.id(),
-                        new Assignee(mom.id(), mom.role()),
+                        List.of(new Assignee(mom.id(), mom.role())),
                         Recurrence.weekdays(),
                         at,
                         Duration.ofMinutes(30),
@@ -343,7 +406,7 @@ class SeriesMaterializationJobIT extends AbstractSqliteIT {
                 family.id(),
                 "Отвезти детей в школу",
                 mom.id(),
-                new Assignee(kid.id(), kid.role()),
+                List.of(new Assignee(kid.id(), kid.role())),
                 Recurrence.daily(),
                 LocalTime.of(8, 0),
                 duration,
