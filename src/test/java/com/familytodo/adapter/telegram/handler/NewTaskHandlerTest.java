@@ -216,7 +216,7 @@ class NewTaskHandlerTest {
 
         @Test
         void pickingTwoAndPressingDoneGoesOnToTheDeadline() {
-            startAndName(mom, "Отвезти Наифа к врачу");
+            startAndName(mom, "Отвезти ребёнка к врачу");
             sender.clear();
 
             handler.handle(callback(mom), toggleAssignee(mom.id()));
@@ -227,12 +227,12 @@ class NewTaskHandlerTest {
             assertThat(dialogs.get(mom.telegramUserId()))
                     .contains(
                             new DialogState.AwaitingDueDate(
-                                    "Отвезти Наифа к врачу", List.of(mom.id(), dad.id())));
+                                    "Отвезти ребёнка к врачу", List.of(mom.id(), dad.id())));
         }
 
         @Test
         void bothPeopleEndUpOnTheTask() {
-            startAndName(mom, "Отвезти Наифа к врачу");
+            startAndName(mom, "Отвезти ребёнка к врачу");
             handler.handle(callback(mom), toggleAssignee(mom.id()));
             handler.handle(callback(mom), toggleAssignee(dad.id()));
             handler.handle(callback(mom), assigneesDone());
@@ -248,7 +248,7 @@ class NewTaskHandlerTest {
         /** Уведомление уходит каждому, кроме самого автора: себе писать незачем. */
         @Test
         void everyoneButTheAuthorIsNotified() {
-            startAndName(mom, "Отвезти Наифа к врачу");
+            startAndName(mom, "Отвезти ребёнка к врачу");
             handler.handle(callback(mom), toggleAssignee(mom.id()));
             handler.handle(callback(mom), toggleAssignee(dad.id()));
             handler.handle(callback(mom), toggleAssignee(kid.id()));
@@ -265,20 +265,20 @@ class NewTaskHandlerTest {
 
         @Test
         void tappingTheSameNameTwiceUnticksIt() {
-            startAndName(mom, "Отвезти Наифа к врачу");
+            startAndName(mom, "Отвезти ребёнка к врачу");
 
             handler.handle(callback(mom), toggleAssignee(dad.id()));
             handler.handle(callback(mom), toggleAssignee(dad.id()));
 
             assertThat(dialogs.get(mom.telegramUserId()))
                     .contains(
-                            new DialogState.ChoosingAssignees("Отвезти Наифа к врачу", List.of()));
+                            new DialogState.ChoosingAssignees("Отвезти ребёнка к врачу", List.of()));
         }
 
         /** Никого не отметили — состояние не сбрасываем: человек не передумал, а ещё не выбрал. */
         @Test
         void pressingDoneWithNobodyTickedKeepsThePicker() {
-            startAndName(mom, "Отвезти Наифа к врачу");
+            startAndName(mom, "Отвезти ребёнка к врачу");
             sender.clear();
 
             handler.handle(callback(mom), assigneesDone());
@@ -295,7 +295,7 @@ class NewTaskHandlerTest {
          */
         @Test
         void aSharedTaskIsAskedAboutRepeatingLikeAnyOther() {
-            startAndName(mom, "Отвезти Наифа к врачу");
+            startAndName(mom, "Отвезти ребёнка к врачу");
             handler.handle(callback(mom), toggleAssignee(mom.id()));
             handler.handle(callback(mom), toggleAssignee(dad.id()));
             handler.handle(callback(mom), assigneesDone());
@@ -308,7 +308,7 @@ class NewTaskHandlerTest {
 
         @Test
         void aSharedTaskBecomesASeriesOnEveryoneNamed() {
-            startAndName(mom, "Отвезти Наифа к врачу");
+            startAndName(mom, "Отвезти ребёнка к врачу");
             handler.handle(callback(mom), toggleAssignee(mom.id()));
             handler.handle(callback(mom), toggleAssignee(dad.id()));
             handler.handle(callback(mom), assigneesDone());
@@ -325,7 +325,7 @@ class NewTaskHandlerTest {
         /** И каждое материализованное вхождение достаётся обоим, а не первому из списка. */
         @Test
         void everyOccurrenceOfASharedSeriesCarriesBothPeople() {
-            startAndName(mom, "Отвезти Наифа к врачу");
+            startAndName(mom, "Отвезти ребёнка к врачу");
             handler.handle(callback(mom), toggleAssignee(mom.id()));
             handler.handle(callback(mom), toggleAssignee(dad.id()));
             handler.handle(callback(mom), assigneesDone());
@@ -360,7 +360,7 @@ class NewTaskHandlerTest {
          */
         @Test
         void thePickerStaysOnScreenAfterTheFirstName() {
-            startAndName(mom, "Отвезти Наифа к врачу");
+            startAndName(mom, "Отвезти ребёнка к врачу");
             sender.clear();
 
             handler.handle(callback(mom), toggleAssignee(mom.id()));
@@ -372,7 +372,7 @@ class NewTaskHandlerTest {
             assertThat(dialogs.get(mom.telegramUserId()))
                     .contains(
                             new DialogState.ChoosingAssignees(
-                                    "Отвезти Наифа к врачу", List.of(mom.id())));
+                                    "Отвезти ребёнка к врачу", List.of(mom.id())));
         }
     }
 

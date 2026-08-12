@@ -55,7 +55,7 @@ install -d -o root -g root -m 750 /etc/family-todo
 ```bash
 cat > /etc/family-todo/env <<'EOF'
 BOT_TOKEN=<токен от BotFather>
-BOT_USERNAME=FamilyTODO_bot
+BOT_USERNAME=<имя бота без @>
 DB_PATH=/var/lib/family-todo/family-todo.db
 EOF
 
@@ -89,7 +89,7 @@ systemctl enable family-todo
 
 Без ограничения журнал растёт до 10% раздела. На маленьком VPS это заметно.
 
-⚠️ **На `your-server` этот шаг пропускается.** Журнал там занимает 3.9 Гб, и это
+⚠️ **На своей машине этот шаг пропускается.** Журнал там занимает 3.9 Гб, и это
 почти целиком логи соседа: квота урежет общий журнал, а не наш, и первый же
 `systemctl restart systemd-journald` удалит чужую историю. Настройка журнала —
 общесистемная, поэтому на общей машине она не наша.

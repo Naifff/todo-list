@@ -1,182 +1,208 @@
-# Семейный туду-лист
+# Family todo
 
-Общий список дел для семьи с интерфейсом в Telegram. Любой член семьи может попросить другого о деле,
-отметить его выполненным или отказаться с причиной, получить напоминание о сроке и утренний список дел.
+A shared todo list for one family, driven entirely from Telegram. Anyone in the family can ask
+someone else to do something, mark it done, or decline with a reason. Reminders arrive before
+the deadline, and a short digest arrives every morning.
 
-Задача решается такая: устные просьбы вроде «вынеси мусор» или «купи хлеб» теряются, а общий чат
-превращается в ленту, где ничего не найти. Бот даёт просьбе состояние, адресата и срок.
+You host it yourself: one jar file and a database file next to it. No web server, no ports.
 
-## Что умеет
+The interface and the source comments are in Russian. Russian documentation:
+[README.ru.md](README.ru.md).
 
-- **Личные чаты, один бот на все семьи.** Изоляция по семье, вступление по одноразовой ссылке-приглашению.
-- **Три состояния дела:** открыто, сделано, отклонено. Отказ — полноценный ответ на просьбу, а не ошибка.
-- **Две роли.** Родитель видит весь список семьи, ребёнок — только своё, но попросить может кого угодно.
-- **Имя и цвет для каждого.** Родитель правит, как человек подписан; цветом рисуются его дела в
-  расписании — в недельной сетке по цвету видно, чьё дело, быстрее, чем по подписи.
-- **Расписание** на день, три дня, неделю или месяц: списком в чате, сеткой или списком файлом.
-- **Повторяющиеся дела:** каждый день, по будням или по выбранным дням недели — в том числе
-  сразу на нескольких.
-- **Списки покупок:** продовольственный и хозяйственный, общие на семью. Наполнять и вычёркивать
-  может любой, включая детей.
-- **Напоминания и два утренних списка:** на сегодня и на ближайшую неделю. Список персональный —
-  только то, что поручено вам.
-- **История** за неделю или месяц, сеткой или списком: что было сделано и от чего отказались.
+---
 
-## Команды
+## Status
 
-| Команда | Что делает |
-|---------|-----------|
-| `/start` | Войти в семью по приглашению |
-| `/new` | Попросить о деле: название, исполнитель или несколько, срок, повторение |
-| `/agenda` | Расписание на 1, 3, 7 или 30 дней — в чате, сеткой или списком файлом; там же история за неделю и месяц |
-| `/shop` | Списки покупок: продукты и хозяйство |
-| `/my` | Что просили у меня |
-| `/assigned` | Что я попросил у других |
-| `/all` | Все дела семьи, только для родителей |
-| `/family` | Состав семьи, приглашения, имена и цвета, настройки |
-| `/help` | Справка |
+Working software, deployed and used daily by the family it was written for. It has never been
+reviewed by anyone outside the project.
 
-### Дело на нескольких
+This is a hobby project with an opinion, not a product. It solves one household's problem:
+spoken requests like "take the bins out" get lost, and a group chat turns into a feed where
+nothing can be found. A request here has an addressee, a state and a deadline.
 
-Одно дело можно поручить сразу нескольким. Так задумана запись ребёнка к врачу: она нужна
-обоим родителям, а заведённая дважды даёт два напоминания, два блока в календаре и «сделано»
-у одного при висящем деле у другого.
+## What it does
 
-При создании бот показывает список семьи с отметками: нажатие отмечает человека или снимает
-отметку, внизу «Дальше». Состав можно поменять и потом — в карточке дела, кнопка «Кто делает»:
-нажатие так же добавляет или снимает.
+- **Private chats, one bot for many families.** Families are isolated; you join by a one-time
+  invitation link.
+- **Three states for a task:** open, done, declined. Declining is a real answer to a request,
+  not an error — it carries a reason.
+- **Two roles.** A parent sees the whole family's list; a child sees only their own — but can
+  ask anyone, including a parent.
+- **A task can be given to several people at once.** A doctor's appointment for a child is
+  needed by both parents; entered twice it would produce two reminders, two calendar blocks and
+  "done" for one while it still hangs for the other.
+- **Names and colours.** A parent edits how a person is labelled; their tasks are drawn in
+  their colour, which is how you tell whose is whose in a week grid at a glance.
+- **A schedule for 1, 3, 7 or 30 days** — as a message, or as a self-contained HTML file, as a
+  grid or as a list. History for the past week or month, in the same two forms.
+- **Recurring tasks:** daily, weekdays, or chosen days of the week — for several people too.
+- **Two shopping lists**, groceries and household, shared by the whole family. Anyone fills
+  them in, including children.
+- **Reminders and two morning digests:** today, and the week ahead. The digest is personal —
+  only what was asked of you.
 
-Отметка «Готово» закрывает дело для всех — к врачу сходили, и держать это в голове больше
-никому не нужно. А «Не могу» снимает дело только с того, кто нажал: у каждого своя причина,
-и дело закрывается, лишь когда отказались все. В расписании плашка такого дела поделена
-поровну на цвета исполнителей.
+## What it does not do
 
-Повторяющимся такое дело сделать можно: каждое вхождение достаётся всем названным.
+- **Telegram sees everything.** Messages travel through Telegram's servers like any bot's. Do
+  not put anything in a task you would not put in a chat.
+- **No web interface.** There is nothing to open in a browser. The exported schedule is a file
+  you download, not a page that is served.
+- **No multi-family accounts.** One Telegram account belongs to exactly one family.
+- **A parent sees the other parent's tasks.** Deliberate: a shared calendar exists so that
+  people can see who is busy when. Children see only their own.
 
-### Списки покупок
+## Design decisions worth knowing
 
-Позиция списка — не дело: у неё нет исполнителя, срока и отказа, поэтому она не попадает ни в
-`/my`, ни в утренний список, ни в расписание. Иначе сорок строк «молоко» сделали бы эти три экрана
-бесполезными.
+The reasoning behind every non-obvious choice lives in [CLAUDE.md](CLAUDE.md) and in the
+completed plans under `docs/plans/completed/`. Each plan ends with a section on what acceptance
+testing on a real phone found — bugs that no test caught. That, rather than the code, is what
+this repository is worth reading for.
 
-Наполняется список одним сообщением, по позиции в строке:
+A few of them:
+
+- **Family isolation is structural, not disciplined.** `family_id` is duplicated onto `task`
+  precisely so that it can be a mandatory first argument of every query method.
+- **"Done" closes a task for everyone; "can't" removes only the person who pressed it.** Done
+  is a fact about the world; declining is an answer to a request, and every addressee answers
+  for themselves. The task is declined only when everyone has declined.
+- **Times are stored as epoch millis, never as text.** `Instant.toString()` drops zero
+  fractions, and `...T16:00:00.123Z` sorts *before* `...T16:00:00Z`.
+- **The exported schedule contains no JavaScript and makes no external requests.** A link is a
+  blank space in a file downloaded to be read without a network — and a task title is user text
+  that a browser would execute.
+- **No health endpoint**, because no port is opened. Liveness is a line in the log, and the
+  guarantee is the absence of the servlet API from the classpath, not a configuration flag.
+
+## Commands
+
+| Command | What it does |
+|---------|--------------|
+| `/start` | Join a family by invitation |
+| `/new` | Ask for something: title, one or more assignees, deadline, repetition |
+| `/agenda` | Schedule for 1, 3, 7 or 30 days; history for the past week or month |
+| `/shop` | Shopping lists: groceries and household |
+| `/my` | What was asked of me |
+| `/assigned` | What I asked of others |
+| `/all` | The whole family's tasks (parents only) |
+| `/family` | Members, invitations, names and colours, settings |
+| `/help` | This list |
+
+## Built with
+
+Java 25, Spring Boot 4.1, SQLite. No web server: the bot uses long polling, that is, outbound
+connections only, and listens on no port.
 
 ```
-молоко
-хлеб
-стиральный порошок
+domain/         entities and rules. No Spring, no JPA, not a single annotation
+application/    use cases and ports — the interfaces through which the domain asks for the world
+adapter/telegram/     router, handlers, keyboards, message and file rendering
+adapter/persistence/  SQL and port implementations
+adapter/scheduler/    reminders, morning digest, materialising recurring tasks
+config/         bean wiring
 ```
 
-Тап по позиции отмечает её купленной, повторный — возвращает обратно. Купленное уходит вниз и
-убирается кнопкой. Уведомлений списки не шлют вовсе: оповещение на каждую мелочь превратило бы
-полезную вещь в источник шума.
+Layer boundaries are enforced by ArchUnit tests, not by convention. The domain must be testable
+without starting Spring: if checking a permission rule needs a context, the rule has leaked out
+of its layer.
 
-### Два вида расписания файлом
+## Build and test
 
-Кроме списка в самом сообщении, расписание выгружается HTML-файлом в двух формах на выбор.
-**Сеткой** — ось часов с колонками дней до недели, месячная сетка неделями дальше: видно, сколько
-дело занимает, что с чем пересекается и где в дне дыры. **Списком** — день за днём, без осей и
-границ. Сетка нагляднее для плотного дня, список не упирается ни в какие рамки; что удобнее,
-зависит от дня.
-
-Оба файла несут то, чего нет в сообщении: место, исполнителя, статус, причину отказа и дела без
-даты.
-
-Файл самодостаточный: стили внутри, ни одного внешнего запроса и ни строки JavaScript. Открывается
-без сети — например, в магазине или в дороге.
-
-## Как устроено
-
-Java 25, Spring Boot 4.1, SQLite. Веб-сервера нет: бот работает через long polling, то есть только
-исходящими соединениями, и не слушает ни одного порта.
-
-```
-domain/         сущности и правила. Ни Spring, ни JPA, ни одной аннотации
-application/    юзкейсы и порты — интерфейсы, которыми домен просит внешний мир
-adapter/telegram/     бот: роутер, хендлеры, клавиатуры, вёрстка, отрисовка календаря
-adapter/persistence/  SQL и реализации портов
-adapter/scheduler/    напоминания, утренний список, повторяющиеся дела
-config/         сборка бинов
-```
-
-Границы слоёв закреплены тестами ArchUnit, а не соглашением. Подробности решений и граблей —
-в [CLAUDE.md](CLAUDE.md).
-
-## Сборка и запуск
-
-Нужна только Java 25. Gradle приезжает через wrapper, СУБД ставить не надо — база это файл.
+Java 25 is the only prerequisite. Gradle arrives through the wrapper; there is no database to
+install, because the database is a file.
 
 ```bash
 ./gradlew check
 ```
 
-Прогоняет юнит-тесты и интеграционные на реальном SQLite. Отдельно:
+That runs the unit tests and the integration tests against a real SQLite file. Separately:
 
 ```bash
 ./gradlew test
+```
+
+```bash
 ./gradlew integrationTest
 ```
 
-Только через `./gradlew` — версия сборки не должна зависеть от того, что стоит на машине.
+Always through `./gradlew` — the build version must not depend on what happens to be installed.
 
-### Локальный запуск
+## Running it
 
-Скопируйте `.env.example` в `.env` и заполните. Токен берётся у [@BotFather](https://t.me/BotFather).
+Get a token from [@BotFather](https://t.me/BotFather), then:
 
 ```bash
 cp .env.example .env
 ```
 
+Fill it in and build:
+
 ```bash
 ./gradlew bootJar
 ```
 
-Запускать так, чтобы переменные пришли из файла, а не из командной строки — аргументы процесса
-видны в `ps` любому пользователю машины:
+Start it so that the variables come from the file rather than the command line — process
+arguments are visible in `ps` to every user on the machine:
 
 ```bash
 set -a && source .env && set +a && java -jar build/libs/family-todo-0.0.1-SNAPSHOT.jar
 ```
 
-Признак того, что бот жив, — строка `long polling started` в логе. Health-эндпоинта нет: приложение
-намеренно не открывает портов.
+The sign of life is `long polling started` in the log. There is no health endpoint, on purpose.
 
-Пустые `BOT_TOKEN` или `BOT_USERNAME` приложение не примет и не стартует. Это сделано нарочно: иначе
-бот поднимается, Telegram отвечает 404, и в логе это выглядит перебоями сети.
+An empty `BOT_TOKEN` or `BOT_USERNAME` stops startup deliberately: otherwise the bot comes up,
+Telegram answers 404, and the log makes it look like a network problem.
 
-### Переменные окружения
+### Environment
 
-| Переменная | Значение |
-|------------|----------|
-| `BOT_TOKEN` | Токен от BotFather. Если утёк — отзывать через BotFather, удалить файл недостаточно |
-| `BOT_USERNAME` | Имя бота без `@`, нужно для сборки ссылок-приглашений |
-| `DB_PATH` | Файл базы. Локально `./data/family-todo.db`, на сервере `/var/lib/family-todo/family-todo.db` |
-| `FAMILY_CREATION_ENABLED` | Принимать ли новые семьи. По умолчанию `false` — вход только по приглашению |
+| Variable | Meaning |
+|----------|---------|
+| `BOT_TOKEN` | Token from BotFather. If it leaks, revoke it through BotFather — deleting the file is not enough |
+| `BOT_USERNAME` | Bot name without `@`; used to build invitation links |
+| `DB_PATH` | Database file. `./data/family-todo.db` locally |
+| `FAMILY_CREATION_ENABLED` | Whether new families may register. `false` by default — invitation only |
 
-`.env` в `.gitignore` с первого коммита, реальный токен в репозиторий не попадает.
+### New families are closed by default
 
-### Новые семьи
+`/start` without an invitation code answers that a link is needed; it does not create a family.
+The default lives in the code, not only in `application.yml`, so that a forgotten setting
+cannot quietly open registration to a stranger who found the bot through search. The switch
+closes family creation but **not** joining by invitation — otherwise it would also lock out the
+people who were already sent a link.
 
-По умолчанию бот **не создаёт новые семьи**: `/start` без кода приглашения отвечает, что нужна
-ссылка. Семья заводится один раз, остальные входят по приглашениям. Открыть регистрацию обратно —
-переменная `FAMILY_CREATION_ENABLED=true`, пересборка не нужна.
+## Deploying
 
-## Деплой
-
-Systemd, база — файл рядом со службой. Пошагово: [deploy/install.md](deploy/install.md).
-
-Выкладка собирает проект локально и отправляет на сервер только jar:
+Systemd, with the database as a file next to the service. Step by step:
+[deploy/install.md](deploy/install.md).
 
 ```bash
 ./deploy/deploy.sh user@host
 ```
 
-Историю памяти пишет `deploy/memlog.sh` — строка в сутки в `/var/lib/family-todo/memory.log`.
-Резервные копии делает `deploy/backup.sh` через `sqlite3 .backup`, а не копированием файла: при
-включённом WAL часть свежих страниц лежит в отдельном файле, и обычная копия может не открыться.
-Снимок раз в сутки ставит таймер systemd, хранение — семь дней. Успешный запуск сам по себе ничего
-не доказывает: годность копии проверяют разворачиванием.
+The script builds locally and ships only the jar. Backups are taken with `sqlite3 .backup`
+rather than by copying the file: with WAL enabled some recent pages live in a separate file,
+and a plain copy may fail to open — silently, until you need it.
 
-## Лицензия
+⚠️ If the machine is shared with anything else, remember you are a guest there. Anything
+system-wide — firewall rules, `sysctl`, journald quotas, installing or restarting Docker —
+affects your neighbours, and the cost of a mistake is theirs. `install.md` marks such steps.
 
-Частный проект, лицензия не назначена.
+## Contributing
+
+This is a personal project shaped around one family's habits, and it is opinionated on purpose.
+Issues and pull requests are welcome, but a change that removes a documented decision will be
+asked to argue with the reasoning in `CLAUDE.md` first — those notes exist because most of them
+were paid for with a bug.
+
+Before sending a change:
+
+```bash
+./gradlew check
+```
+
+## License
+
+[GNU Affero General Public License v3.0](LICENSE).
+
+AGPL rather than a permissive license on purpose. The bot holds a family's private
+correspondence about their days and lives on a server for exactly as long as it is trusted. A
+license that allowed running a modified, closed version for other people would hollow that out.
