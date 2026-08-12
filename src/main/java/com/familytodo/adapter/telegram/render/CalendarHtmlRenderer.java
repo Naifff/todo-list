@@ -75,13 +75,14 @@ public final class CalendarHtmlRenderer {
             Map<Long, Member> byId,
             ZoneId zone,
             LocalDate from,
-            int days) {
+            int days,
+            LocalDate today) {
 
         StringBuilder html = open(from, days);
         List<LocalDate> columns = columns(from, days);
 
         if (days > MAX_DAYS_ON_AXIS) {
-            appendMonth(html, dated, byId, zone, from, days);
+            appendMonth(html, dated, byId, zone, from, days, today);
         } else {
             appendTimeGrid(html, dated, byId, zone, columns);
         }
@@ -101,7 +102,8 @@ public final class CalendarHtmlRenderer {
             Map<Long, Member> byId,
             ZoneId zone,
             LocalDate from,
-            int days) {
+            int days,
+            LocalDate today) {
 
         StringBuilder html = open(from, days);
         List<LocalDate> columns = columns(from, days);
@@ -109,7 +111,7 @@ public final class CalendarHtmlRenderer {
 
         for (LocalDate day : columns) {
             html.append("<section class=\"day\">\n<h2>")
-                    .append(dayHeading(day, from))
+                    .append(dayHeading(day, today))
                     .append("</h2>\n");
 
             List<Entry> entries = byDay.get(day);
@@ -171,6 +173,14 @@ public final class CalendarHtmlRenderer {
         return html.toString().getBytes(StandardCharsets.UTF_8);
     }
 
+    /**
+     * Заголовок дня: «сегодня» и «завтра» вместо даты, когда это они.
+     *
+     * <p>⚠️ {@code today} — настоящее сегодня, а не начало окна. Раньше сюда приходило начало окна:
+     * у расписания вперёд это одно и то же, а у истории окно кончается вчера — и первый её день
+     * подписывался «сегодня», второй «завтра». Найдено взглядом на скачанный файл, тестом такое не
+     * ловится: оба значения были осмысленными датами.
+     */
     private static String dayHeading(LocalDate day, LocalDate today) {
         String weekday = day.getDayOfWeek().getDisplayName(TextStyle.FULL, RU);
         String prefix = "";
@@ -331,7 +341,8 @@ public final class CalendarHtmlRenderer {
             Map<Long, Member> byId,
             ZoneId zone,
             LocalDate from,
-            int days) {
+            int days,
+            LocalDate today) {
 
         // сетка начинается с понедельника: неделя, разрезанная посередине, не читается
         LocalDate start = from.with(DayOfWeek.MONDAY);
@@ -353,7 +364,12 @@ public final class CalendarHtmlRenderer {
 
         for (LocalDate day : cells) {
             boolean outside = day.isBefore(from) || !day.isBefore(from.plusDays(days));
-            html.append("<div class=\"cell").append(outside ? " outside" : "").append("\">\n");
+            // сегодняшний день метим: в череде одинаковых квадратиков он иначе теряется.
+            // У истории окно кончается вчера, поэтому там не метится ничего
+            html.append("<div class=\"cell")
+                    .append(outside ? " outside" : "")
+                    .append(day.equals(today) ? " today" : "")
+                    .append("\">\n");
             html.append("<div class=\"date\">").append(day.getDayOfMonth()).append("</div>\n");
             for (Entry entry : byDay.getOrDefault(day, List.of())) {
                 Task task = entry.task();
@@ -757,6 +773,10 @@ public final class CalendarHtmlRenderer {
                  border-top: 1px solid var(--line);
                }
                .cell.outside { opacity: .45; }
+               /* inset, а не border: настоящая рамка сдвинула бы содержимое ячейки на пиксель
+                  и разъехалась бы с соседями по строке */
+               .cell.today { box-shadow: inset 0 0 0 2px var(--accent); }
+               .cell.today .date { color: var(--accent); font-weight: 700; }
                .date { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
                .chip {
                  background: var(--ribbon, none) top / 100% 3px no-repeat,

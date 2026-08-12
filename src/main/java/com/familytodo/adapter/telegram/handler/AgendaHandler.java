@@ -113,8 +113,8 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
 
         byte[] html =
                 asList
-                        ? CalendarHtmlRenderer.renderList(dated, undated, byId, zone, today, days)
-                        : CalendarHtmlRenderer.render(dated, undated, byId, zone, today, days);
+                        ? CalendarHtmlRenderer.renderList(dated, undated, byId, zone, today, days, today)
+                        : CalendarHtmlRenderer.render(dated, undated, byId, zone, today, days, today);
         sender.sendDocument(
                 request.chatId(),
                 html,
@@ -147,8 +147,8 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
 
         byte[] html =
                 asList
-                        ? CalendarHtmlRenderer.renderList(past, List.of(), byId, zone, from, days)
-                        : CalendarHtmlRenderer.render(past, List.of(), byId, zone, from, days);
+                        ? CalendarHtmlRenderer.renderList(past, List.of(), byId, zone, from, days, today)
+                        : CalendarHtmlRenderer.render(past, List.of(), byId, zone, from, days, today);
         sender.sendDocument(
                 request.chatId(),
                 html,

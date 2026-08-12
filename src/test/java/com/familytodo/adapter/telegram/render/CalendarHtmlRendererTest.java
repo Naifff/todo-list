@@ -90,7 +90,8 @@ class CalendarHtmlRendererTest {
                             roster,
                             MOSCOW,
                             MONDAY,
-                            1);
+                            1,
+                            MONDAY);
 
             assertThat(new String(bytes, StandardCharsets.UTF_8)).contains("Школа");
         }
@@ -149,7 +150,8 @@ class CalendarHtmlRendererTest {
                             tricky,
                             MOSCOW,
                             MONDAY,
-                            1);
+                            1,
+                            MONDAY);
 
             assertThat(new String(bytes, StandardCharsets.UTF_8))
                     .contains("&lt;i&gt;Петя&lt;/i&gt;")
@@ -197,6 +199,64 @@ class CalendarHtmlRendererTest {
             String html = render(List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)), List.of(), 30);
 
             assertThat(html).contains("Школа").doesNotContain("✓").doesNotContain("✕");
+        }
+    }
+
+    @Nested
+    class TodayInTheMonthGrid {
+
+        /** В череде одинаковых квадратиков сегодняшний день иначе не найти. */
+        @Test
+        void todaysCellIsMarked() {
+            String html = render(List.of(), List.of(), MONDAY, 30, MONDAY.plusDays(3));
+
+            assertThat(html).contains("cell today");
+        }
+
+        /** У истории окно кончается вчера — отмечать в нём нечего. */
+        @Test
+        void aPastMonthMarksNothing() {
+            String html = render(List.of(), List.of(), MONDAY.minusDays(30), 30, MONDAY);
+
+            assertThat(html).doesNotContain("cell today");
+        }
+    }
+
+    @Nested
+    class RelativeDayNames {
+
+        /**
+         * ⚠️ «Сегодня» считается от настоящего сегодня, а не от начала окна.
+         *
+         * <p>У расписания вперёд это одно и то же, и параметр назывался {@code today}, а приходило
+         * в него начало окна. У истории окно кончается вчера — и первый её день подписывался
+         * «сегодня», а второй «завтра». Нашлось не тестом, а взглядом на скачанный файл.
+         */
+        @Test
+        void aPastWindowNamesNoDayTodayOrTomorrow() {
+            LocalDate from = MONDAY.minusDays(7);
+            String html =
+                    renderList(
+                            List.of(scheduled("Школа", from.plusDays(1), 8, 0, 8, 40)),
+                            List.of(),
+                            from,
+                            7,
+                            MONDAY);
+
+            assertThat(html).doesNotContain("сегодня").doesNotContain("завтра");
+        }
+
+        @Test
+        void aForwardWindowStillNamesTodayAndTomorrow() {
+            String html =
+                    renderList(
+                            List.of(
+                                    scheduled("Школа", MONDAY, 8, 0, 8, 40),
+                                    scheduled("Бассейн", MONDAY.plusDays(1), 18, 0, 19, 0)),
+                            List.of(),
+                            3);
+
+            assertThat(html).contains("сегодня").contains("завтра");
         }
     }
 
@@ -640,7 +700,8 @@ class CalendarHtmlRendererTest {
                                             Map.of(),
                                             MOSCOW,
                                             MONDAY,
-                                            1))
+                                            1,
+                                            MONDAY))
                     .doesNotThrowAnyException();
         }
 
@@ -654,14 +715,24 @@ class CalendarHtmlRendererTest {
     // --- вспомогательное ---
 
     private String render(List<Task> dated, List<Task> undated, int days) {
+        return render(dated, undated, MONDAY, days, MONDAY);
+    }
+
+    private String render(
+            List<Task> dated, List<Task> undated, LocalDate from, int days, LocalDate today) {
         return new String(
-                CalendarHtmlRenderer.render(dated, undated, roster, MOSCOW, MONDAY, days),
+                CalendarHtmlRenderer.render(dated, undated, roster, MOSCOW, from, days, today),
                 StandardCharsets.UTF_8);
     }
 
     private String renderList(List<Task> dated, List<Task> undated, int days) {
+        return renderList(dated, undated, MONDAY, days, MONDAY);
+    }
+
+    private String renderList(
+            List<Task> dated, List<Task> undated, LocalDate from, int days, LocalDate today) {
         return new String(
-                CalendarHtmlRenderer.renderList(dated, undated, roster, MOSCOW, MONDAY, days),
+                CalendarHtmlRenderer.renderList(dated, undated, roster, MOSCOW, from, days, today),
                 StandardCharsets.UTF_8);
     }
 
