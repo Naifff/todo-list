@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -152,21 +153,62 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
             return true;
         }
 
-        // день берём у срока: интервал без дня повис бы в воздухе, а спрашивать
-        // дату отдельным шагом ради «отвезти детей» слишком дорого
+        // ⚠️ Тем же разбором, что и при создании. Раньше здесь был отдельный, который дат не
+        // знал вовсе: «27.08» уезжало в место целиком. Заодно ушло расхождение — одно время
+        // при создании означало срок, а здесь начало занятого времени
         LocalDate day =
-                LocalDate.ofInstant(task.dueAt() != null ? task.dueAt() : clock.instant(), zone);
-        Optional<DueDateParser.Slot> slot = dueDates.parseSlot(input, zone, day);
+                LocalDate.ofInstant(moment(task) != null ? moment(task) : clock.instant(), zone);
+        Optional<DueDateParser.Plan> parsed = dueDates.parsePlan(input, zone, day);
 
-        if (slot.isEmpty()) {
+        if (parsed.isEmpty()) {
             sender.send(request.chatId(), Texts.SLOT_NOT_PARSED);
             return true;
         }
 
-        DueDateParser.Slot value = slot.get();
-        tasks.schedule(actor, task.id(), value.startsAt(), value.endsAt(), value.location());
+        apply(actor, task, parsed.get(), zone);
         finish(request, actor, tasks.findVisible(actor, task.id()), awaiting.kind());
         return true;
+    }
+
+    /**
+     * Меняем только названное. Экран правит уже существующее дело, и умолчание здесь значит «не
+     * трогай», а не «сотри»: «18:00-19:00 парк» не должно стирать дату, о которой договорились.
+     * Очищает всё разом только «-».
+     */
+    private void apply(Member actor, Task task, DueDateParser.Plan plan, ZoneId zone) {
+        Instant startsAt = task.startsAt();
+        Instant endsAt = task.endsAt();
+
+        if (plan.startsAt() != null) {
+            startsAt = plan.startsAt();
+            endsAt = plan.endsAt();
+        } else if (plan.dueAt() != null && task.isScheduled()) {
+            // ⚠️ Одна лишь дата у дела с интервалом — это перенос. Календарь ставит дело по
+            // началу интервала: сдвинув только срок, мы оставили бы его на прежнем дне, и
+            // «перенёс на 27.08» выглядело бы как «ничего не произошло»
+            long shift =
+                    ChronoUnit.DAYS.between(
+                            LocalDate.ofInstant(task.startsAt(), zone),
+                            LocalDate.ofInstant(plan.dueAt(), zone));
+            startsAt = task.startsAt().atZone(zone).plusDays(shift).toInstant();
+            endsAt =
+                    task.endsAt() == null
+                            ? null
+                            : task.endsAt().atZone(zone).plusDays(shift).toInstant();
+        }
+
+        String location = plan.location() != null ? plan.location() : task.location();
+        tasks.schedule(actor, task.id(), startsAt, endsAt, location);
+
+        // срок ставим последним: schedule его не трогает, а порядок делает намерение явным
+        if (plan.dueAt() != null && !task.isScheduled()) {
+            tasks.edit(actor, task.id(), task.title(), plan.dueAt());
+        }
+    }
+
+    /** Момент дела: начало интервала, а если его нет — срок. */
+    private static Instant moment(Task task) {
+        return task.startsAt() != null ? task.startsAt() : task.dueAt();
     }
 
     private boolean acceptTitle(BotRequest request, DialogState.AwaitingNewTitle awaiting) {

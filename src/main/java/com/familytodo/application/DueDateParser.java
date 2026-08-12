@@ -163,48 +163,6 @@ public class DueDateParser {
     }
 
     /**
-     * Разбор строки «08:00-08:40 школа», «19:00 дом» или просто «Zoom».
-     *
-     * <p>День берётся снаружи — обычно это день срока задачи. Интервал без дня повис бы в воздухе,
-     * а спрашивать дату отдельным шагом ради «отвезти детей» слишком дорого.
-     */
-    public Optional<Slot> parseSlot(String input, ZoneId zone, LocalDate day) {
-        if (input == null || input.isBlank()) {
-            return Optional.empty();
-        }
-        Matcher matcher = SLOT.matcher(input.trim());
-        if (!matcher.matches()) {
-            return Optional.empty();
-        }
-
-        String rest = matcher.group(5);
-        String location = rest == null || rest.isBlank() ? null : rest.trim();
-
-        if (matcher.group(1) == null) {
-            return Optional.of(new Slot(null, null, location));
-        }
-
-        Optional<LocalTime> start = time(matcher.group(1), matcher.group(2));
-        if (start.isEmpty()) {
-            return Optional.empty();
-        }
-        if (matcher.group(3) == null) {
-            return Optional.of(new Slot(at(day, start.get(), zone), null, location));
-        }
-
-        Optional<LocalTime> end = time(matcher.group(3), matcher.group(4));
-        if (end.isEmpty() || end.get().equals(start.get())) {
-            // равные концы — ноль или сутки, понять нельзя; отказ честнее догадки
-            return Optional.empty();
-        }
-        return Optional.of(
-                new Slot(
-                        at(day, start.get(), zone),
-                        at(endDay(day, start.get(), end.get()), end.get(), zone),
-                        location));
-    }
-
-    /**
      * День, на который приходится конец интервала.
      *
      * <p>Конец раньше начала — это ночь, а не опечатка: «22:40-8:00 кровать» обычное семейное дело,
@@ -213,9 +171,6 @@ public class DueDateParser {
     private static LocalDate endDay(LocalDate day, LocalTime start, LocalTime end) {
         return end.isBefore(start) ? day.plusDays(1) : day;
     }
-
-    /** Разобранное «когда и где». Любое поле может быть пустым. */
-    public record Slot(Instant startsAt, Instant endsAt, String location) {}
 
     /**
      * Разобранное «когда и где» при создании дела: дата, время или интервал, место — одной строкой.
@@ -233,6 +188,20 @@ public class DueDateParser {
      * <p>Надмножество {@link #parse}: всё, что понималось прежней «Своей датой», понимается и здесь.
      */
     public Optional<Plan> parsePlan(String input, ZoneId zone) {
+        return parsePlan(input, zone, null);
+    }
+
+    /**
+     * То же, но день по умолчанию задан снаружи — так правит уже существующее дело.
+     *
+     * <p>Разница одна и она важна: при создании дня ещё нет, поэтому «19:00» без даты означает
+     * сегодня, а если этот час уже прошёл — завтра, иначе дело просрочено в момент создания. При
+     * правке день назвала сама задача, и сдвигать его на сутки значило бы переносить дело, о
+     * котором человек уже договорился.
+     *
+     * @param defaultDay день, если дату не назвали; {@code null} — считать от сегодня
+     */
+    public Optional<Plan> parsePlan(String input, ZoneId zone, LocalDate defaultDay) {
         if (input == null || input.isBlank()) {
             return Optional.empty();
         }
@@ -288,9 +257,12 @@ public class DueDateParser {
                     new Plan(date == null ? null : at(date, DEFAULT_TIME, zone), null, null, location));
         }
 
-        // день без даты: прошедшее время значит завтра, иначе дело просрочено сразу
-        LocalDate day = date != null ? date : today;
-        if (date == null && !start.isAfter(LocalTime.now(clock.withZone(zone)))) {
+        LocalDate day = date != null ? date : (defaultDay != null ? defaultDay : today);
+        // день без даты и без подсказки снаружи: прошедшее время значит завтра, иначе дело
+        // просрочено сразу. С подсказкой сдвиг не нужен — день назвала задача, а не парсер
+        if (date == null
+                && defaultDay == null
+                && !start.isAfter(LocalTime.now(clock.withZone(zone)))) {
             day = day.plusDays(1);
         }
 
