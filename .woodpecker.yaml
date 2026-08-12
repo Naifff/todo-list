@@ -1,0 +1,15 @@
+# Woodpecker CI на Codeberg — то же, что и GitHub Actions.
+#
+# check, а не test: интеграционный набор работает с настоящим файлом SQLite и
+# именно в нём проверяются миграции и изоляция семей. Зелёный `test` в этом
+# проекте уже вводил в заблуждение.
+when:
+  - event: [push, pull_request, manual]
+
+steps:
+  - name: check
+    # Java 25 задана toolchain'ом; в образе должен быть тот же JDK, потому что
+    # автозагрузка toolchain'ов в проекте не подключена.
+    image: eclipse-temurin:25-jdk
+    commands:
+      - ./gradlew --console=plain check
