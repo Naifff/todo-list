@@ -130,8 +130,20 @@ public class SeriesService {
         return saved;
     }
 
+    /** Активные правила, которые этому участнику положено видеть. */
     public List<TaskSeries> active(Member viewer) {
-        return series.findActive(viewer.familyId());
+        return series.findActive(viewer.familyId(), visibilityLimit(viewer));
+    }
+
+    /** Одно правило — с той же проверкой видимости: чужое обязано выглядеть как несуществующее. */
+    public TaskSeries require(Member viewer, long seriesId) {
+        return series.findById(viewer.familyId(), visibilityLimit(viewer), seriesId)
+                .orElseThrow(() -> new DomainException.NotFound("series not found"));
+    }
+
+    /** Ребёнок видит только свои правила, родитель — все семейные. Как и у задач. */
+    private static Long visibilityLimit(Member viewer) {
+        return viewer.role() == Role.CHILD ? viewer.id() : null;
     }
 
     /**
@@ -141,9 +153,7 @@ public class SeriesService {
      * повод её стирать. Строка серии тоже остаётся: на неё ссылается эта история.
      */
     public TaskSeries stop(Member actor, long seriesId) {
-        TaskSeries rule =
-                series.findById(actor.familyId(), seriesId)
-                        .orElseThrow(() -> new DomainException.NotFound("series not found"));
+        TaskSeries rule = require(actor, seriesId);
 
         rule.stop(actor.asActor(), clock.instant());
         series.save(rule);

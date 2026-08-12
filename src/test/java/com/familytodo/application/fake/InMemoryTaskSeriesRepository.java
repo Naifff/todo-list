@@ -27,19 +27,31 @@ public final class InMemoryTaskSeriesRepository implements TaskSeriesRepository 
     }
 
     @Override
-    public Optional<TaskSeries> findById(long familyId, long seriesId) {
-        return Optional.ofNullable(series.get(seriesId)).filter(s -> s.familyId() == familyId);
+    public Optional<TaskSeries> findById(long familyId, Long visibleToMemberId, long seriesId) {
+        return Optional.ofNullable(series.get(seriesId))
+                .filter(s -> s.familyId() == familyId)
+                .filter(s -> visible(s, visibleToMemberId));
     }
 
     @Override
-    public List<TaskSeries> findActive(long familyId) {
+    public List<TaskSeries> findActive(long familyId, Long visibleToMemberId) {
         List<TaskSeries> found = new ArrayList<>();
         for (TaskSeries rule : series.values()) {
-            if (rule.familyId() == familyId && !rule.isStopped()) {
+            if (rule.familyId() == familyId && !rule.isStopped() && visible(rule, visibleToMemberId)) {
                 found.add(rule);
             }
         }
         return found;
+    }
+
+    /** Повторяет условие из SQL: {@code null} — видно всё, иначе только своё. */
+    private static boolean visible(TaskSeries rule, Long visibleToMemberId) {
+        if (visibleToMemberId == null) {
+            return true;
+        }
+        return rule.creatorId() == visibleToMemberId
+                || rule.assignees().stream()
+                        .anyMatch(assignee -> assignee.memberId() == visibleToMemberId);
     }
 
     @Override

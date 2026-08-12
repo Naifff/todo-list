@@ -92,6 +92,7 @@ public final class Texts {
             /shop — списки покупок: продукты и хозяйство
             /my — что просили у меня
             /assigned — что я попросил у других
+            /series — повторяющиеся дела
             /all — все дела семьи (только для родителей)
             /family — состав семьи и приглашения
             /help — эта справка""";
@@ -166,6 +167,19 @@ public final class Texts {
     public static final String AGENDA_EMPTY = "На этот срок дел нет.";
 
     public static final String ALL_IS_FOR_PARENTS = "Весь список семьи видят только родители.";
+
+    // --- повторяющиеся дела ---
+
+    public static final String SERIES_HEADER = "🔁 <b>Повторяющиеся дела</b>";
+
+    /**
+     * Пустой экран обязан говорить, откуда берутся серии: команды «завести повторение» нет, оно
+     * спрашивается шагом внутри {@code /new}, и найти его самому неоткуда.
+     */
+    public static final String SERIES_EMPTY =
+            "Повторяющихся дел нет.\n\nОни заводятся в /new: после срока бот спросит «Повторять?».";
+
+    public static final String SERIES_BACK = "← К списку";
 
     // --- карточка ---
 

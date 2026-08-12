@@ -8,6 +8,8 @@ import com.familytodo.adapter.persistence.JdbcIdSequence;
 import com.familytodo.adapter.persistence.JdbcMemberRepository;
 import com.familytodo.adapter.persistence.JdbcShoppingRepository;
 import com.familytodo.adapter.persistence.JdbcTaskRepository;
+import com.familytodo.adapter.persistence.JdbcTaskSeriesRepository;
+import com.familytodo.application.SeriesService;
 import com.familytodo.application.ShoppingService;
 import com.familytodo.application.TaskQuery;
 import com.familytodo.application.TaskService;
@@ -15,13 +17,18 @@ import com.familytodo.support.NoOpNotifier;
 import com.familytodo.domain.DomainException;
 import com.familytodo.domain.Family;
 import com.familytodo.domain.Member;
+import com.familytodo.domain.Recurrence;
 import com.familytodo.domain.Role;
 import com.familytodo.domain.ShoppingList;
 import com.familytodo.domain.Task;
+import com.familytodo.domain.TaskSeries;
 import com.familytodo.domain.TaskStatus;
 import com.familytodo.persistence.AbstractSqliteIT;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +54,7 @@ class CrossFamilyIsolationIT extends AbstractSqliteIT {
     private JdbcMemberRepository memberRepository;
     private TaskService service;
     private ShoppingService shopping;
+    private SeriesService seriesService;
 
     private Member momA;
     private Member kidA;
@@ -69,6 +77,13 @@ class CrossFamilyIsolationIT extends AbstractSqliteIT {
         shopping =
                 new ShoppingService(
                         new JdbcShoppingRepository(jdbc, sequence),
+                        Clock.fixed(NOW, ZoneOffset.UTC));
+        seriesService =
+                new SeriesService(
+                        familyRepository,
+                        new JdbcTaskSeriesRepository(jdbc, sequence),
+                        taskRepository,
+                        memberRepository,
                         Clock.fixed(NOW, ZoneOffset.UTC));
 
         Family familyA =
@@ -224,6 +239,65 @@ class CrossFamilyIsolationIT extends AbstractSqliteIT {
 
         assertThat(shopping.items(otherKidA, ShoppingList.FOOD)).hasSize(1);
         assertThat(shopping.toggle(otherKidA, id).isBought()).isTrue();
+    }
+
+    // --- повторяющиеся дела ---
+
+    /**
+     * У серий обе оси проверяются отдельно от задач: правило живёт в своей таблице, со своим
+     * запросом и своим условием видимости. Фейк хранилища такое пропускал бы — он повторяет условие,
+     * а не исполняет его.
+     */
+    @Test
+    void foreignSeriesIsNotFoundAndNeverAppearsInTheList() {
+        TaskSeries training = trainingOfFamilyA();
+
+        assertThatThrownBy(() -> seriesService.require(momB, training.id()))
+                .isInstanceOf(DomainException.NotFound.class);
+        assertThat(seriesService.active(momB)).isEmpty();
+    }
+
+    @Test
+    void strangerCannotStopForeignSeries() {
+        TaskSeries training = trainingOfFamilyA();
+
+        assertThatThrownBy(() -> seriesService.stop(momB, training.id()))
+                .isInstanceOf(DomainException.NotFound.class);
+        assertThat(seriesService.active(momA)).hasSize(1);
+    }
+
+    /**
+     * Вторая ось: посторонний ребёнок своей семьи. Здесь ответ — «не найдено», а не «нельзя»:
+     * список правил он получает тем же запросом, что и карточку, и разделять их значило бы
+     * рассказывать, какие серии в семье есть.
+     */
+    @Test
+    void uninvolvedChildOfTheSameFamilyDoesNotSeeTheSeries() {
+        TaskSeries training = trainingOfFamilyA();
+
+        assertThat(seriesService.active(otherKidA)).isEmpty();
+        assertThatThrownBy(() -> seriesService.require(otherKidA, training.id()))
+                .isInstanceOf(DomainException.NotFound.class);
+    }
+
+    /** А тот, кого правило касается, видит его — иначе фильтр «работал» бы, отрезая всех. */
+    @Test
+    void theChildTheSeriesIsAboutSeesIt() {
+        trainingOfFamilyA();
+
+        assertThat(seriesService.active(kidA)).hasSize(1);
+    }
+
+    private TaskSeries trainingOfFamilyA() {
+        return seriesService.create(
+                momA,
+                java.util.List.of(kidA.id()),
+                "Тренировка",
+                Recurrence.weekdays(),
+                LocalTime.of(18, 0),
+                Duration.ofHours(1),
+                "Спортшкола",
+                LocalDate.of(2026, 8, 7));
     }
 
     private void assertStillOpen() {

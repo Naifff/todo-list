@@ -134,12 +134,33 @@ public class JdbcTaskSeriesRepository implements TaskSeriesRepository {
                 .update();
     }
 
+    /**
+     * Видимость ребёнка: правило показывается, только если он исполнитель или автор.
+     *
+     * <p>Условие в SQL, а не отсевом после выборки — по той же причине, что и у задач: отсеянная
+     * строка уже прочитана, и дальше всё держится на том, что её никому не отдадут.
+     */
+    private static final String VISIBLE_TO_CHILD =
+            """
+             and (exists (select 1 from task_series_assignee sa
+                          where sa.series_id = s.id and sa.member_id = ?)
+                  or s.creator_id = ?)
+            """;
+
     @Override
-    public Optional<TaskSeries> findById(long familyId, long seriesId) {
+    public Optional<TaskSeries> findById(long familyId, Long visibleToMemberId, long seriesId) {
+        List<Object> params = new ArrayList<>(List.of(familyId, seriesId));
+        String sql = SELECT + " where s.family_id = ? and s.id = ?";
+        if (visibleToMemberId != null) {
+            sql += VISIBLE_TO_CHILD;
+            params.add(visibleToMemberId);
+            params.add(visibleToMemberId);
+        }
+
         return assemble(
                         familyId,
-                        jdbc.sql(SELECT + " where s.family_id = ? and s.id = ?")
-                                .params(familyId, seriesId)
+                        jdbc.sql(sql)
+                                .params(params)
                                 .query(JdbcTaskSeriesRepository::mapRow)
                                 .list())
                 .stream()
@@ -147,11 +168,19 @@ public class JdbcTaskSeriesRepository implements TaskSeriesRepository {
     }
 
     @Override
-    public List<TaskSeries> findActive(long familyId) {
+    public List<TaskSeries> findActive(long familyId, Long visibleToMemberId) {
+        List<Object> params = new ArrayList<>(List.of(familyId));
+        String sql = SELECT + " where s.family_id = ? and s.stopped_at is null";
+        if (visibleToMemberId != null) {
+            sql += VISIBLE_TO_CHILD;
+            params.add(visibleToMemberId);
+            params.add(visibleToMemberId);
+        }
+
         return assemble(
                 familyId,
-                jdbc.sql(SELECT + " where s.family_id = ? and s.stopped_at is null order by s.id")
-                        .param(familyId)
+                jdbc.sql(sql + " order by s.id")
+                        .params(params)
                         .query(JdbcTaskSeriesRepository::mapRow)
                         .list());
     }

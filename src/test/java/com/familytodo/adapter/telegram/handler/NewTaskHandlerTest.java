@@ -316,7 +316,7 @@ class NewTaskHandlerTest {
 
             handler.handle(callback(mom), repeat(NewTaskKeyboards.WEEKDAYS));
 
-            var rule = series.findActive(mom.familyId()).getFirst();
+            var rule = series.findActive(mom.familyId(), null).getFirst();
             assertThat(rule.assignees())
                     .extracting(com.familytodo.domain.Assignee::memberId)
                     .containsExactly(mom.id(), dad.id());
@@ -504,7 +504,7 @@ class NewTaskHandlerTest {
 
             assertThat(dialogs.get(mom.telegramUserId())).isEmpty();
             assertThat(tasks.find(TaskQuery.visibleTo(mom))).hasSize(1);
-            assertThat(series.findActive(mom.familyId())).isEmpty();
+            assertThat(series.findActive(mom.familyId(), null)).isEmpty();
         }
 
         @Test
@@ -514,7 +514,7 @@ class NewTaskHandlerTest {
             handler.handle(callback(mom), repeat(NewTaskKeyboards.ONCE));
 
             assertThat(tasks.find(TaskQuery.visibleTo(mom))).hasSize(1);
-            assertThat(series.findActive(mom.familyId())).isEmpty();
+            assertThat(series.findActive(mom.familyId(), null)).isEmpty();
         }
 
         @Test
@@ -523,8 +523,8 @@ class NewTaskHandlerTest {
 
             handler.handle(callback(mom), repeat(NewTaskKeyboards.DAILY));
 
-            assertThat(series.findActive(mom.familyId())).hasSize(1);
-            assertThat(series.findActive(mom.familyId()).getFirst().recurrence())
+            assertThat(series.findActive(mom.familyId(), null)).hasSize(1);
+            assertThat(series.findActive(mom.familyId(), null).getFirst().recurrence())
                     .isEqualTo(Recurrence.daily());
             assertThat(tasks.find(TaskQuery.visibleTo(mom)))
                     .describedAs(
@@ -539,7 +539,7 @@ class NewTaskHandlerTest {
 
             handler.handle(callback(mom), repeat(NewTaskKeyboards.WEEKDAYS));
 
-            assertThat(series.findActive(mom.familyId()).getFirst().recurrence())
+            assertThat(series.findActive(mom.familyId(), null).getFirst().recurrence())
                     .isEqualTo(Recurrence.weekdays());
         }
 
@@ -550,7 +550,7 @@ class NewTaskHandlerTest {
 
             handler.handle(callback(mom), repeat(NewTaskKeyboards.DAILY));
 
-            assertThat(series.findActive(mom.familyId()).getFirst().startTime())
+            assertThat(series.findActive(mom.familyId(), null).getFirst().startTime())
                     .isEqualTo(DueDateParser.DEFAULT_TIME);
         }
 
@@ -562,7 +562,7 @@ class NewTaskHandlerTest {
 
             assertThat(dialogs.get(mom.telegramUserId()))
                     .containsInstanceOf(DialogState.ChoosingDays.class);
-            assertThat(series.findActive(mom.familyId())).isEmpty();
+            assertThat(series.findActive(mom.familyId(), null)).isEmpty();
         }
 
         @Test
@@ -578,7 +578,7 @@ class NewTaskHandlerTest {
                                     List.of(kid.id()),
                                     deadline(tomorrow()),
                                     Set.of(DayOfWeek.TUESDAY)));
-            assertThat(series.findActive(mom.familyId())).isEmpty();
+            assertThat(series.findActive(mom.familyId(), null)).isEmpty();
         }
 
         @Test
@@ -602,7 +602,7 @@ class NewTaskHandlerTest {
 
             handler.handle(callback(mom), repeat(NewTaskKeyboards.DAYS_DONE));
 
-            assertThat(series.findActive(mom.familyId()).getFirst().recurrence())
+            assertThat(series.findActive(mom.familyId(), null).getFirst().recurrence())
                     .isEqualTo(Recurrence.on(Set.of(DayOfWeek.TUESDAY, DayOfWeek.THURSDAY)));
         }
 
@@ -613,7 +613,7 @@ class NewTaskHandlerTest {
 
             handler.handle(callback(mom), repeat(NewTaskKeyboards.DAYS_DONE));
 
-            assertThat(series.findActive(mom.familyId())).isEmpty();
+            assertThat(series.findActive(mom.familyId(), null)).isEmpty();
             assertThat(sender.texts).contains(Texts.PICK_AT_LEAST_ONE_DAY);
         }
 
@@ -624,7 +624,7 @@ class NewTaskHandlerTest {
 
             handler.handle(callback(mom), repeat(NewTaskKeyboards.DAILY));
 
-            assertThat(series.findActive(mom.familyId())).isEmpty();
+            assertThat(series.findActive(mom.familyId(), null)).isEmpty();
             assertThat(sender.texts).contains(Texts.DIALOG_EXPIRED);
         }
 
@@ -732,8 +732,8 @@ class NewTaskHandlerTest {
 
             handler.handle(callback(mom), repeat(NewTaskKeyboards.WEEKDAYS));
 
-            assertThat(series.findActive(mom.familyId())).hasSize(1);
-            assertThat(series.findActive(mom.familyId()).getFirst().startTime())
+            assertThat(series.findActive(mom.familyId(), null)).hasSize(1);
+            assertThat(series.findActive(mom.familyId(), null).getFirst().startTime())
                     .isEqualTo(java.time.LocalTime.of(8, 0));
         }
 

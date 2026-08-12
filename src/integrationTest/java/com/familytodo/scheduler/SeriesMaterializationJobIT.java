@@ -180,7 +180,7 @@ class SeriesMaterializationJobIT extends AbstractSqliteIT {
                             null,
                             NOW));
 
-            assertThat(series.findById(family.id(), id).orElseThrow().assignees())
+            assertThat(series.findById(family.id(), null, id).orElseThrow().assignees())
                     .extracting(Assignee::memberId)
                     .containsExactly(kid.id(), mom.id());
         }
