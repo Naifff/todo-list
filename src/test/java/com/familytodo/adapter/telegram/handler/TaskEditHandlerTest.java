@@ -159,6 +159,102 @@ class TaskEditHandlerTest {
         }
     }
 
+    /**
+     * «Время и место» в карточке. Тестов у этого экрана не было вовсе — и ровно в нём жила
+     * ошибка: разбирал он другим парсером, который дат не знает, поэтому «27.08» уезжало в место.
+     */
+    @Nested
+    class WhenAndWhere {
+
+        @Test
+        void aBareDateBecomesTheDeadline() {
+            Task task = tasks.create(mom, kid.id(), "Забрать посылку", DUE);
+            handler.handle(callback(mom), edit(TaskEditView.SLOT, task.id()));
+
+            handler.continueDialog(text(mom, "27.08"));
+
+            assertThat(reload(task).dueAt()).isEqualTo(Instant.parse("2026-08-27T16:00:00Z"));
+            assertThat(reload(task).location()).isNull();
+        }
+
+        /**
+         * ⚠️ У дела с интервалом одна лишь дата означает перенос, а не «поставить срок рядом».
+         *
+         * <p>Календарь ставит дело по началу интервала: если сдвинуть только срок, дело осталось
+         * бы на прежнем дне, и перенос выглядел бы как «ничего не произошло».
+         */
+        @Test
+        void aBareDateMovesAnExistingIntervalToThatDay() {
+            Task task = tasks.create(mom, kid.id(), "Тренировка", DUE);
+            tasks.schedule(
+                    mom,
+                    task.id(),
+                    Instant.parse("2026-08-08T15:00:00Z"),
+                    Instant.parse("2026-08-08T16:30:00Z"),
+                    "бассейн");
+            handler.handle(callback(mom), edit(TaskEditView.SLOT, task.id()));
+
+            handler.continueDialog(text(mom, "27.08"));
+
+            Task moved = reload(task);
+            assertThat(moved.startsAt()).isEqualTo(Instant.parse("2026-08-27T15:00:00Z"));
+            assertThat(moved.endsAt()).isEqualTo(Instant.parse("2026-08-27T16:30:00Z"));
+            assertThat(moved.location()).isEqualTo("бассейн");
+        }
+
+        /** Названо только время — срок дела остаётся. Стирать его молча значило бы потерять дату. */
+        @Test
+        void anIntervalKeepsTheExistingDeadline() {
+            Task task = tasks.create(mom, kid.id(), "Тренировка", DUE);
+            handler.handle(callback(mom), edit(TaskEditView.SLOT, task.id()));
+
+            handler.continueDialog(text(mom, "18:00-19:00 бассейн"));
+
+            Task updated = reload(task);
+            assertThat(updated.dueAt()).isEqualTo(DUE);
+            assertThat(updated.location()).isEqualTo("бассейн");
+            assertThat(updated.startsAt()).isEqualTo(Instant.parse("2026-08-08T15:00:00Z"));
+        }
+
+        /** Названо только место — время не трогаем. */
+        @Test
+        void aPlaceAloneKeepsTheTime() {
+            Task task = tasks.create(mom, kid.id(), "Тренировка", DUE);
+            tasks.schedule(
+                    mom,
+                    task.id(),
+                    Instant.parse("2026-08-08T15:00:00Z"),
+                    Instant.parse("2026-08-08T16:30:00Z"),
+                    "бассейн");
+            handler.handle(callback(mom), edit(TaskEditView.SLOT, task.id()));
+
+            handler.continueDialog(text(mom, "школа"));
+
+            Task updated = reload(task);
+            assertThat(updated.location()).isEqualTo("школа");
+            assertThat(updated.startsAt()).isEqualTo(Instant.parse("2026-08-08T15:00:00Z"));
+        }
+
+        /** Минус убирает всё разом — единственный способ очистить. */
+        @Test
+        void aDashClearsTimeAndPlace() {
+            Task task = tasks.create(mom, kid.id(), "Тренировка", DUE);
+            tasks.schedule(
+                    mom,
+                    task.id(),
+                    Instant.parse("2026-08-08T15:00:00Z"),
+                    Instant.parse("2026-08-08T16:30:00Z"),
+                    "бассейн");
+            handler.handle(callback(mom), edit(TaskEditView.SLOT, task.id()));
+
+            handler.continueDialog(text(mom, "-"));
+
+            Task updated = reload(task);
+            assertThat(updated.startsAt()).isNull();
+            assertThat(updated.location()).isNull();
+        }
+    }
+
     @Nested
     class Assignee {
 

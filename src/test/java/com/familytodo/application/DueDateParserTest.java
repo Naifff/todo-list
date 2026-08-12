@@ -34,18 +34,18 @@ class DueDateParserTest {
 
         @Test
         void endBeforeStartMeansTheNextMorning() {
-            DueDateParser.Slot slot =
-                    parser.parseSlot("22:40-8:00 кровать", MOSCOW, LocalDate.of(2026, 8, 7))
+            DueDateParser.Plan plan =
+                    parser.parsePlan("22:40-8:00 кровать", MOSCOW, LocalDate.of(2026, 8, 7))
                             .orElseThrow();
 
-            assertThat(slot.startsAt()).isEqualTo(Instant.parse("2026-08-07T19:40:00Z"));
-            assertThat(slot.endsAt()).isEqualTo(Instant.parse("2026-08-08T05:00:00Z"));
-            assertThat(slot.location()).isEqualTo("кровать");
+            assertThat(plan.startsAt()).isEqualTo(Instant.parse("2026-08-07T19:40:00Z"));
+            assertThat(plan.endsAt()).isEqualTo(Instant.parse("2026-08-08T05:00:00Z"));
+            assertThat(plan.location()).isEqualTo("кровать");
         }
 
         @Test
         void equalStartAndEndIsRejected() {
-            assertThat(parser.parseSlot("22:40-22:40", MOSCOW, LocalDate.of(2026, 8, 7))).isEmpty();
+            assertThat(parser.parsePlan("22:40-22:40", MOSCOW, LocalDate.of(2026, 8, 7))).isEmpty();
         }
     }
 
@@ -154,6 +154,76 @@ class DueDateParserTest {
         }
     }
 
+    /**
+     * Правка «когда и где» разбирается тем же {@code parsePlan}, что и создание, — с одной
+     * разницей: день, когда дату не назвали, берётся у самого дела, а не «сегодня».
+     */
+    @Nested
+    class PlanWithADefaultDay {
+
+        private static final LocalDate TASK_DAY = LocalDate.of(2026, 9, 1);
+
+        /** ⚠️ Ровно то, что не работало: голая дата уезжала в место целиком. */
+        @Test
+        void aBareDateBecomesTheDeadline() {
+            DueDateParser.Plan plan = parser.parsePlan("27.08", MOSCOW, TASK_DAY).orElseThrow();
+
+            assertThat(plan.dueAt()).isEqualTo(Instant.parse("2026-08-27T16:00:00Z"));
+            assertThat(plan.location()).isNull();
+            assertThat(plan.startsAt()).isNull();
+        }
+
+        @Test
+        void aDateWithTimeBecomesTheDeadlineToo() {
+            DueDateParser.Plan plan =
+                    parser.parsePlan("27.08 18:00", MOSCOW, TASK_DAY).orElseThrow();
+
+            assertThat(plan.dueAt()).isEqualTo(Instant.parse("2026-08-27T15:00:00Z"));
+            assertThat(plan.location()).isNull();
+        }
+
+        @Test
+        void aDateWithAnIntervalOccupiesThatDay() {
+            DueDateParser.Plan plan =
+                    parser.parsePlan("27.08 18:00-19:00 парк", MOSCOW, TASK_DAY).orElseThrow();
+
+            assertThat(plan.startsAt()).isEqualTo(Instant.parse("2026-08-27T15:00:00Z"));
+            assertThat(plan.endsAt()).isEqualTo(Instant.parse("2026-08-27T16:00:00Z"));
+            assertThat(plan.location()).isEqualTo("парк");
+        }
+
+        /**
+         * Без даты берётся день дела — и <b>без</b> правила «прошедшее время значит завтра».
+         * Правило нужно при создании, где дня ещё нет; здесь день назвал не парсер, а задача, и
+         * сдвигать его на сутки значило бы переносить чужое дело.
+         */
+        @Test
+        void withoutADateTheTasksOwnDayIsUsedAsIs() {
+            DueDateParser.Plan plan =
+                    parser.parsePlan("08:00-08:40 школа", MOSCOW, TASK_DAY).orElseThrow();
+
+            assertThat(plan.startsAt()).isEqualTo(Instant.parse("2026-09-01T05:00:00Z"));
+            assertThat(plan.endsAt()).isEqualTo(Instant.parse("2026-09-01T05:40:00Z"));
+        }
+
+        @Test
+        void aLoneTimeOnTheTasksDayIsADeadlineNotAnInterval() {
+            DueDateParser.Plan plan = parser.parsePlan("19:00", MOSCOW, TASK_DAY).orElseThrow();
+
+            assertThat(plan.dueAt()).isEqualTo(Instant.parse("2026-09-01T16:00:00Z"));
+            assertThat(plan.startsAt()).isNull();
+        }
+
+        @Test
+        void placeOnlyStaysPlaceOnly() {
+            DueDateParser.Plan plan = parser.parsePlan("Zoom", MOSCOW, TASK_DAY).orElseThrow();
+
+            assertThat(plan.location()).isEqualTo("Zoom");
+            assertThat(plan.dueAt()).isNull();
+            assertThat(plan.startsAt()).isNull();
+        }
+    }
+
     @Nested
     class Slots {
 
@@ -161,49 +231,50 @@ class DueDateParserTest {
 
         @Test
         void parsesIntervalWithLocation() {
-            DueDateParser.Slot slot =
-                    parser.parseSlot("08:00-08:40 школа", MOSCOW, DAY).orElseThrow();
+            DueDateParser.Plan plan =
+                    parser.parsePlan("08:00-08:40 школа", MOSCOW, DAY).orElseThrow();
 
-            assertThat(slot.startsAt()).isEqualTo(Instant.parse("2026-09-01T05:00:00Z"));
-            assertThat(slot.endsAt()).isEqualTo(Instant.parse("2026-09-01T05:40:00Z"));
-            assertThat(slot.location()).isEqualTo("школа");
+            assertThat(plan.startsAt()).isEqualTo(Instant.parse("2026-09-01T05:00:00Z"));
+            assertThat(plan.endsAt()).isEqualTo(Instant.parse("2026-09-01T05:40:00Z"));
+            assertThat(plan.location()).isEqualTo("школа");
         }
 
+        /** ⚠️ Одно время — это срок, а не начало занятого времени. Прежний разбор считал иначе. */
         @Test
         void parsesOpenEndedTime() {
-            DueDateParser.Slot slot = parser.parseSlot("19:00 дом", MOSCOW, DAY).orElseThrow();
+            DueDateParser.Plan plan = parser.parsePlan("19:00 дом", MOSCOW, DAY).orElseThrow();
 
-            assertThat(slot.startsAt()).isEqualTo(Instant.parse("2026-09-01T16:00:00Z"));
-            assertThat(slot.endsAt()).isNull();
-            assertThat(slot.location()).isEqualTo("дом");
+            assertThat(plan.dueAt()).isEqualTo(Instant.parse("2026-09-01T16:00:00Z"));
+            assertThat(plan.startsAt()).isNull();
+            assertThat(plan.location()).isEqualTo("дом");
         }
 
         /** Место без времени — обычный случай: «Zoom» без расписания. */
         @Test
         void parsesLocationOnly() {
-            DueDateParser.Slot slot = parser.parseSlot("Zoom", MOSCOW, DAY).orElseThrow();
+            DueDateParser.Plan plan = parser.parsePlan("Zoom", MOSCOW, DAY).orElseThrow();
 
-            assertThat(slot.startsAt()).isNull();
-            assertThat(slot.location()).isEqualTo("Zoom");
+            assertThat(plan.startsAt()).isNull();
+            assertThat(plan.location()).isEqualTo("Zoom");
         }
 
         @Test
         void parsesTimeOnly() {
-            DueDateParser.Slot slot = parser.parseSlot("08:00-08:40", MOSCOW, DAY).orElseThrow();
+            DueDateParser.Plan plan = parser.parsePlan("08:00-08:40", MOSCOW, DAY).orElseThrow();
 
-            assertThat(slot.location()).isNull();
-            assertThat(slot.endsAt()).isEqualTo(Instant.parse("2026-09-01T05:40:00Z"));
+            assertThat(plan.location()).isNull();
+            assertThat(plan.endsAt()).isEqualTo(Instant.parse("2026-09-01T05:40:00Z"));
         }
 
         @Test
         void acceptsEnDashAsSeparator() {
-            assertThat(parser.parseSlot("08:00 – 08:40 школа", MOSCOW, DAY)).isPresent();
+            assertThat(parser.parsePlan("08:00 – 08:40 школа", MOSCOW, DAY)).isPresent();
         }
 
         @ParameterizedTest
         @ValueSource(strings = {"08:70-09:00 школа", "25:00 школа", "08:00-08:00"})
         void rejectsImpossibleIntervals(String input) {
-            assertThat(parser.parseSlot(input, MOSCOW, DAY)).isEmpty();
+            assertThat(parser.parsePlan(input, MOSCOW, DAY)).isEmpty();
         }
 
         /**
@@ -216,14 +287,16 @@ class DueDateParserTest {
          */
         @Test
         void endBeforeStartIsAcceptedAsRunningIntoTheNextDay() {
-            DueDateParser.Slot slot = parser.parseSlot("09:00-08:00 школа", MOSCOW, DAY).orElseThrow();
+            DueDateParser.Plan plan =
+                    parser.parsePlan("09:00-08:00 школа", MOSCOW, DAY).orElseThrow();
 
-            assertThat(slot.endsAt()).isEqualTo(slot.startsAt().plus(java.time.Duration.ofHours(23)));
+            assertThat(plan.endsAt())
+                    .isEqualTo(plan.startsAt().plus(java.time.Duration.ofHours(23)));
         }
 
         @Test
         void rejectsEmptyInput() {
-            assertThat(parser.parseSlot("   ", MOSCOW, DAY)).isEmpty();
+            assertThat(parser.parsePlan("   ", MOSCOW, DAY)).isEmpty();
         }
     }
 
