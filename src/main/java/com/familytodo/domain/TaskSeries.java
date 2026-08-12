@@ -4,6 +4,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,7 +29,7 @@ public final class TaskSeries {
     private final long familyId;
     private final String title;
     private final long creatorId;
-    private final Assignee assignee;
+    private final List<Assignee> assignees;
     private final Recurrence recurrence;
     private final LocalTime startTime;
     private final Duration duration;
@@ -42,7 +45,7 @@ public final class TaskSeries {
             long familyId,
             String title,
             long creatorId,
-            Assignee assignee,
+            List<Assignee> assignees,
             Recurrence recurrence,
             LocalTime startTime,
             Duration duration,
@@ -55,7 +58,7 @@ public final class TaskSeries {
         this.familyId = familyId;
         this.title = requireValidTitle(title);
         this.creatorId = creatorId;
-        this.assignee = requireAssignee(assignee);
+        this.assignees = requireAssignees(assignees);
         this.recurrence = requireRecurrence(recurrence);
         this.startTime = requireStartTime(startTime);
         this.duration = requireDuration(duration);
@@ -71,7 +74,7 @@ public final class TaskSeries {
             long familyId,
             String title,
             long creatorId,
-            Assignee assignee,
+            List<Assignee> assignees,
             Recurrence recurrence,
             LocalTime startTime,
             Duration duration,
@@ -84,7 +87,7 @@ public final class TaskSeries {
                 familyId,
                 title,
                 creatorId,
-                assignee,
+                assignees,
                 recurrence,
                 startTime,
                 duration,
@@ -100,7 +103,7 @@ public final class TaskSeries {
             long familyId,
             String title,
             long creatorId,
-            Assignee assignee,
+            List<Assignee> assignees,
             Recurrence recurrence,
             LocalTime startTime,
             Duration duration,
@@ -114,7 +117,7 @@ public final class TaskSeries {
                 familyId,
                 title,
                 creatorId,
-                assignee,
+                assignees,
                 recurrence,
                 startTime,
                 duration,
@@ -166,7 +169,7 @@ public final class TaskSeries {
         }
         boolean allowed =
                 member.memberId() == creatorId
-                        || (member.role() == Role.PARENT && assignee.isChild());
+                        || (member.role() == Role.PARENT && hasChildAssignee());
         if (!allowed) {
             throw new DomainException.NotPermitted("actor may not stop this series");
         }
@@ -196,8 +199,13 @@ public final class TaskSeries {
         return creatorId;
     }
 
-    public Assignee assignee() {
-        return assignee;
+    /** Порядок сохраняется: он же порядок имён в карточке каждого вхождения. */
+    public List<Assignee> assignees() {
+        return List.copyOf(assignees);
+    }
+
+    private boolean hasChildAssignee() {
+        return assignees.stream().anyMatch(Assignee::isChild);
     }
 
     public Recurrence recurrence() {
@@ -242,11 +250,17 @@ public final class TaskSeries {
         return title.strip();
     }
 
-    private static Assignee requireAssignee(Assignee assignee) {
-        if (assignee == null) {
-            throw new IllegalArgumentException("series assignee is required");
+    /**
+     * Повторяющееся дело без исполнителя — правило, которое некому выполнять. Дубликаты снимаются
+     * здесь же, как и у задачи: правило должно быть одно на все пути.
+     */
+    private static List<Assignee> requireAssignees(List<Assignee> assignees) {
+        if (assignees == null || assignees.isEmpty()) {
+            throw new IllegalArgumentException("series needs at least one assignee");
         }
-        return assignee;
+        Map<Long, Assignee> unique = new LinkedHashMap<>();
+        assignees.forEach(assignee -> unique.putIfAbsent(assignee.memberId(), assignee));
+        return List.copyOf(unique.values());
     }
 
     private static Recurrence requireRecurrence(Recurrence recurrence) {

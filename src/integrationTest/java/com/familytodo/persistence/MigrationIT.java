@@ -17,7 +17,15 @@ class MigrationIT extends AbstractSqliteIT {
                         .list();
 
         assertThat(tables)
-                .contains("family", "member", "invite", "task", "task_assignee", "id_sequence");
+                .contains(
+                        "family",
+                        "member",
+                        "invite",
+                        "task",
+                        "task_assignee",
+                        "task_series",
+                        "task_series_assignee",
+                        "id_sequence");
     }
 
     @Test
@@ -35,6 +43,7 @@ class MigrationIT extends AbstractSqliteIT {
                         "idx_task_family_starts",
                         "idx_task_occurrence",
                         "idx_series_active",
+                        "idx_series_assignee_member",
                         "idx_shopping_family");
     }
 

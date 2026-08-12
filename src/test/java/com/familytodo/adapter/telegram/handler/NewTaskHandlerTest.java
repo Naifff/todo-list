@@ -289,11 +289,12 @@ class NewTaskHandlerTest {
         }
 
         /**
-         * ⚠️ Повторение доступно, только когда исполнитель один: серия хранит одного. Вопрос про
-         * повторение не задаётся, но и не пропадает молча — иначе человек решит, что бот сломался.
+         * ⚠️ Раньше здесь стоял обратный тест: при нескольких исполнителях вопрос про повторение
+         * не задавался вовсе, потому что серия хранила одного. Ограничение сняли — тренировка, на
+         * которую возят по очереди, и есть то самое дело, которое и повторяется, и на двоих.
          */
         @Test
-        void aSharedTaskSkipsTheRepeatQuestionAndSaysWhy() {
+        void aSharedTaskIsAskedAboutRepeatingLikeAnyOther() {
             startAndName(mom, "Отвезти Наифа к врачу");
             handler.handle(callback(mom), toggleAssignee(mom.id()));
             handler.handle(callback(mom), toggleAssignee(dad.id()));
@@ -302,13 +303,43 @@ class NewTaskHandlerTest {
 
             handler.handle(callback(mom), due(NewTaskKeyboards.TOMORROW));
 
-            assertThat(sender.texts).hasSize(1);
-            assertThat(sender.texts.getFirst())
-                    .doesNotContain(Texts.ASK_REPEAT)
-                    .contains(Texts.NO_REPEAT_FOR_SEVERAL)
-                    .contains("Делают:");
-            assertThat(series.findActive(mom.familyId())).isEmpty();
-            assertThat(dialogs.get(mom.telegramUserId())).isEmpty();
+            assertThat(sender.texts).endsWith(Texts.ASK_REPEAT);
+        }
+
+        @Test
+        void aSharedTaskBecomesASeriesOnEveryoneNamed() {
+            startAndName(mom, "Отвезти Наифа к врачу");
+            handler.handle(callback(mom), toggleAssignee(mom.id()));
+            handler.handle(callback(mom), toggleAssignee(dad.id()));
+            handler.handle(callback(mom), assigneesDone());
+            handler.handle(callback(mom), due(NewTaskKeyboards.TOMORROW));
+
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.WEEKDAYS));
+
+            var rule = series.findActive(mom.familyId()).getFirst();
+            assertThat(rule.assignees())
+                    .extracting(com.familytodo.domain.Assignee::memberId)
+                    .containsExactly(mom.id(), dad.id());
+        }
+
+        /** И каждое материализованное вхождение достаётся обоим, а не первому из списка. */
+        @Test
+        void everyOccurrenceOfASharedSeriesCarriesBothPeople() {
+            startAndName(mom, "Отвезти Наифа к врачу");
+            handler.handle(callback(mom), toggleAssignee(mom.id()));
+            handler.handle(callback(mom), toggleAssignee(dad.id()));
+            handler.handle(callback(mom), assigneesDone());
+            handler.handle(callback(mom), due(NewTaskKeyboards.TOMORROW));
+
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.DAILY));
+
+            assertThat(tasks.find(TaskQuery.visibleTo(mom)))
+                    .isNotEmpty()
+                    .allSatisfy(
+                            occurrence ->
+                                    assertThat(occurrence.assignments())
+                                            .extracting(Assignment::memberId)
+                                            .containsExactly(mom.id(), dad.id()));
         }
 
         /** При одном исполнителе всё остальное как прежде — вопрос про повторение на месте. */
