@@ -570,11 +570,14 @@ public final class CalendarHtmlRenderer {
     }
 
     /**
-     * Лента цветов поверху блока, когда исполнителей несколько.
+     * Заливка блока, поделённая поровну между исполнителями.
      *
-     * <p>⚠️ Лента, а не заливка блока пополам. Половинки читались с телефона как <b>два соседних
-     * блока</b>, а соседние блоки в сетке означают ровно одно — пересекающиеся дела. То есть дело на
-     * двоих выглядело как два разных дела. Найдено не тестом, а взглядом на готовую страницу.
+     * <p>⚠️ Делится <b>сверху вниз</b>, а не слева направо. Вертикальный раздел читался с телефона
+     * как два соседних блока, а соседние блоки в сетке означают ровно одно — пересекающиеся дела:
+     * дело на двоих выглядело как два разных. Горизонтальные полосы во всю ширину такой путаницы
+     * не создают — блок остаётся одним.
+     *
+     * <p>До этого была тонкая лента поверху; её просили заменить на равномерное деление.
      *
      * <p>⚠️ Отдельной переменной, а не через {@code --own}. Тот же {@code --own} используется в
      * {@code border-left: 3px solid}, а градиент там невалиден: правило целиком отбрасывается, и
@@ -591,7 +594,7 @@ public final class CalendarHtmlRenderer {
             return "";
         }
 
-        StringBuilder gradient = new StringBuilder(";--ribbon:linear-gradient(to right");
+        StringBuilder gradient = new StringBuilder(";--ribbon:linear-gradient(to bottom");
         for (int i = 0; i < count; i++) {
             gradient.append(", ")
                     .append(colorOf(byId, task.assignments().get(i).memberId()))
@@ -742,13 +745,12 @@ public final class CalendarHtmlRenderer {
                  overflow: hidden;
                  padding: 3px 5px;
                  border-radius: 4px;
-                 /* --ribbon появляется, только когда исполнителей несколько: тонкая лента их
-                    цветов поверху. Не заливка блока пополам — половинки читались с телефона
-                    как два соседних блока, а это в сетке означает пересекающиеся дела.
-                    Держать ленту отдельно от --own обязательно: тот же --own уходит в
+                 /* --ribbon появляется, только когда исполнителей несколько: блок делится
+                    поровну на их цвета, полосами сверху вниз. Не слева направо — вертикальный
+                    раздел читался как два соседних блока, а это в сетке означает пересекающиеся
+                    дела. Держать заливку отдельно от --own обязательно: тот же --own уходит в
                     border-left, где градиент невалиден и правило отбрасывается молча */
-                 background: var(--ribbon, none) top / 100% 3px no-repeat,
-                             var(--own, var(--accent));
+                 background: var(--ribbon, var(--own, var(--accent)));
                  color: var(--on-accent);
                  font-size: 11px;
                  line-height: 1.25;
@@ -779,8 +781,7 @@ public final class CalendarHtmlRenderer {
                .cell.today .date { color: var(--accent); font-weight: 700; }
                .date { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
                .chip {
-                 background: var(--ribbon, none) top / 100% 3px no-repeat,
-                             var(--own, var(--accent));
+                 background: var(--ribbon, var(--own, var(--accent)));
                  color: var(--on-accent);
                  border-radius: 4px;
                  padding: 2px 4px;
