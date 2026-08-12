@@ -53,12 +53,11 @@ nothing can be found. A request here has an addressee, a state and a deadline.
 
 ## Design decisions worth knowing
 
-The reasoning behind every non-obvious choice lives in [CLAUDE.md](CLAUDE.md) and in the
-completed plans under `docs/plans/completed/`. Each plan ends with a section on what acceptance
-testing on a real phone found — bugs that no test caught. That, rather than the code, is what
-this repository is worth reading for.
+Every non-obvious choice is explained where it lives — in the javadoc of the class that makes
+it, next to the code it constrains, rather than in a document that drifts away from both. Most
+are marked ⚠️ and were paid for by a bug found on a real phone rather than by a test.
 
-A few of them:
+A few:
 
 - **Family isolation is structural, not disciplined.** `family_id` is duplicated onto `task`
   precisely so that it can be a mandatory first argument of every query method.
@@ -189,9 +188,9 @@ affects your neighbours, and the cost of a mistake is theirs. `install.md` marks
 ## Contributing
 
 This is a personal project shaped around one family's habits, and it is opinionated on purpose.
-Issues and pull requests are welcome, but a change that removes a documented decision will be
-asked to argue with the reasoning in `CLAUDE.md` first — those notes exist because most of them
-were paid for with a bug.
+Issues and pull requests are welcome, but a change that drops a decision marked ⚠️ in the code
+will be asked to argue with the reasoning written next to it first — those notes exist because
+most of them were paid for with a bug.
 
 Before sending a change:
 
