@@ -82,6 +82,7 @@ A few:
 | `/shop` | Shopping lists: groceries and household |
 | `/my` | What was asked of me |
 | `/assigned` | What I asked of others |
+| `/series` | Recurring rules: stop one, or set the date it should run until |
 | `/all` | The whole family's tasks (parents only) |
 | `/family` | Members, invitations, names and colours, settings |
 | `/help` | This list |
