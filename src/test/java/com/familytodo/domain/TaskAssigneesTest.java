@@ -48,7 +48,7 @@ class TaskAssigneesTest {
         return Task.create(
                 100L,
                 FAMILY,
-                "Отвезти Наифа к врачу",
+                "Отвезти ребёнка к врачу",
                 MOM,
                 List.of(new Assignee(MOM, Role.PARENT), new Assignee(DAD, Role.PARENT)),
                 DUE,
