@@ -321,9 +321,11 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
 
     private void confirmDeletion(BotRequest request, Member actor, TaskRef ref) {
         Task task = editable(actor, ref);
+        String question =
+                task.isOccurrence() ? Texts.DELETE_OCCURRENCE_CONFIRM : Texts.DELETE_CONFIRM;
         edit(
                 request,
-                "Удалить дело безвозвратно?\n\n" + card(task, actor),
+                question + "\n\n" + card(task, actor),
                 TaskEditView.confirmDeletion(task, ref.kind()));
     }
 

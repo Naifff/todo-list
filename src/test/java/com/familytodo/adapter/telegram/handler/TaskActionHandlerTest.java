@@ -123,6 +123,25 @@ class TaskActionHandlerTest {
             assertThat(labels(closed, dad)).doesNotContain("Вернуть");
         }
 
+        /**
+         * ⚠️ Из карточки вхождения нужен переход к правилу: здесь виден один день, а «больше не
+         * повторять» живёт на серии. Без этой кнопки единственный доступный жест — «Удалить», и он
+         * убирает не то, что человек имел в виду.
+         */
+        @Test
+        void anOccurrenceOffersAWayToItsSeries() {
+            Task occurrence = occurrence();
+
+            assertThat(labels(occurrence, kid)).contains(Texts.TASK_TO_SERIES);
+        }
+
+        @Test
+        void anOrdinaryTaskHasNoSeriesButton() {
+            Task task = tasks.create(mom, kid.id(), "Вынести мусор", DUE);
+
+            assertThat(labels(task, kid)).doesNotContain(Texts.TASK_TO_SERIES);
+        }
+
         private List<String> labels(Task task, Member viewer) {
             return TaskCardView.keyboard(task, viewer.asActor(), TaskListView.Kind.MINE)
                     .getKeyboard()
@@ -377,6 +396,23 @@ class TaskActionHandlerTest {
                 Optional.empty(),
                 Optional.of(43),
                 Optional.empty());
+    }
+
+    /** Вхождение серии: экрану важно только то, что дело помнит своё правило и день. */
+    private Task occurrence() {
+        Task task =
+                Task.createOccurrence(
+                        repository.nextId(),
+                        mom.familyId(),
+                        "Тренировка",
+                        mom.id(),
+                        List.of(new com.familytodo.domain.Assignee(kid.id(), Role.CHILD)),
+                        DUE,
+                        77L,
+                        java.time.LocalDate.of(2026, 8, 7),
+                        NOW);
+        repository.saveOccurrence(task);
+        return task;
     }
 
     private static final class RecordingSender extends BotSender {

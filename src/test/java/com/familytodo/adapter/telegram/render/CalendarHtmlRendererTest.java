@@ -818,6 +818,8 @@ class CalendarHtmlRendererTest {
                 null,
                 startsAt,
                 endsAt,
-                location);
+                location,
+                null,
+                null);
     }
 }

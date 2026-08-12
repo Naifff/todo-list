@@ -215,6 +215,21 @@ public final class Texts {
 
     // --- карточка ---
 
+    /**
+     * Пометка вхождения. Нужна ровно затем, чтобы «Удалить» перестало обманывать: удаляется один
+     * день, а правило продолжает работать — и без строки это видно только по тому, что назавтра
+     * дело снова на месте.
+     */
+    public static final String TASK_IS_OCCURRENCE = "🔁 Одно из повторяющихся дел";
+
+    public static final String TASK_TO_SERIES = "🔁 К серии";
+
+    /** Отдельный вопрос при удалении вхождения: обещание должно совпадать с тем, что произойдёт. */
+    public static final String DELETE_OCCURRENCE_CONFIRM =
+            "Убрать это дело? Остальные повторы останутся, этот день больше не появится.";
+
+    public static final String DELETE_CONFIRM = "Удалить дело безвозвратно?";
+
     public static final String ASK_DECLINE_REASON = "Почему не получится?";
 
     public static final String DECLINE_REASON_TOO_LONG = "Покороче, пожалуйста — до 200 символов.";

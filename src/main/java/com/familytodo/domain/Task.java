@@ -1,6 +1,7 @@
 package com.familytodo.domain;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -50,6 +51,18 @@ public final class Task {
 
     private String location;
 
+    /**
+     * Откуда взялось дело, если его создало правило.
+     *
+     * <p>Не украшение карточки: без этого «Удалить» на вхождении неотличимо от удаления обычного
+     * дела, а джоба материализации возвращает стёртую строку в течение часа — человек удаляет дело,
+     * и оно приходит обратно.
+     */
+    private final Long seriesId;
+
+    /** Локальная дата вхождения — та же, что в {@code task.occurrence_on}: хранится, не выводится. */
+    private final LocalDate occurrenceOn;
+
     private Task(
             long id,
             long familyId,
@@ -62,7 +75,9 @@ public final class Task {
             Instant closedAt,
             Instant startsAt,
             Instant endsAt,
-            String location) {
+            String location,
+            Long seriesId,
+            LocalDate occurrenceOn) {
         this.id = id;
         this.familyId = familyId;
         this.title = requireValidTitle(title);
@@ -75,6 +90,8 @@ public final class Task {
         this.startsAt = startsAt;
         this.endsAt = endsAt;
         this.location = location;
+        this.seriesId = seriesId;
+        this.occurrenceOn = requireOccurrencePair(seriesId, occurrenceOn);
     }
 
     public static Task create(
@@ -97,6 +114,8 @@ public final class Task {
                 null,
                 null,
                 null,
+                null,
+                null,
                 null);
     }
 
@@ -112,6 +131,39 @@ public final class Task {
         return create(id, familyId, title, creatorId, List.of(assignee), dueAt, createdAt);
     }
 
+    /**
+     * Вхождение серии: обычное дело, которое помнит, каким правилом и на какой день создано.
+     *
+     * <p>Помнить обязано само дело, а не только строка в базе: карточка должна показать, что дело
+     * повторяющееся, а удаление — записать пропуск, иначе джоба вернёт стёртое вхождение.
+     */
+    public static Task createOccurrence(
+            long id,
+            long familyId,
+            String title,
+            long creatorId,
+            List<Assignee> assignees,
+            Instant dueAt,
+            long seriesId,
+            LocalDate occurrenceOn,
+            Instant createdAt) {
+        return new Task(
+                id,
+                familyId,
+                title,
+                creatorId,
+                assignees.stream().map(Assignment::of).toList(),
+                TaskStatus.OPEN,
+                dueAt,
+                createdAt,
+                null,
+                null,
+                null,
+                null,
+                seriesId,
+                occurrenceOn);
+    }
+
     /** Восстановление из хранилища: состояние приходит как есть, без переигрывания переходов. */
     public static Task restore(
             long id,
@@ -125,7 +177,9 @@ public final class Task {
             Instant closedAt,
             Instant startsAt,
             Instant endsAt,
-            String location) {
+            String location,
+            Long seriesId,
+            LocalDate occurrenceOn) {
         return new Task(
                 id,
                 familyId,
@@ -138,7 +192,9 @@ public final class Task {
                 closedAt,
                 startsAt,
                 endsAt,
-                location);
+                location,
+                seriesId,
+                occurrenceOn);
     }
 
     // --- переходы ---
@@ -498,7 +554,31 @@ public final class Task {
         return value == null || value.isBlank();
     }
 
+    /**
+     * Серия и дата вхождения идут только парой: дата без серии не значит ничего, а серия без даты
+     * оставила бы удаление без ответа на вопрос «какой день пропускаем».
+     */
+    private static LocalDate requireOccurrencePair(Long seriesId, LocalDate occurrenceOn) {
+        if ((seriesId == null) != (occurrenceOn == null)) {
+            throw new IllegalArgumentException("series and occurrence date go together");
+        }
+        return occurrenceOn;
+    }
+
     // --- чтение ---
+
+    /** Дело создано правилом, а не человеком: удаление и карточка ведут себя иначе. */
+    public boolean isOccurrence() {
+        return seriesId != null;
+    }
+
+    public Long seriesId() {
+        return seriesId;
+    }
+
+    public LocalDate occurrenceOn() {
+        return occurrenceOn;
+    }
 
     public long id() {
         return id;

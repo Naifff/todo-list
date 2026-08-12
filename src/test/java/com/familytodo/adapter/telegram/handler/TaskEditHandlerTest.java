@@ -407,6 +407,23 @@ class TaskEditHandlerTest {
             assertThat(repository.findById(mom.familyId(), task.id())).isEmpty();
         }
 
+        /**
+         * ⚠️ У вхождения вопрос другой, потому что и происходит другое: правило остаётся, уходит
+         * один день. Прежнее «удалить безвозвратно» здесь было обманом дважды — дело возвращалось
+         * через час, а «безвозвратно» обещало обратное.
+         */
+        @Test
+        void anOccurrenceIsAskedAboutDifferently() {
+            Task occurrence = occurrence();
+            sender.clear();
+
+            handler.handle(callback(mom), edit(TaskEditView.DELETE, occurrence.id()));
+
+            assertThat(sender.edits.getFirst())
+                    .contains(Texts.DELETE_OCCURRENCE_CONFIRM)
+                    .doesNotContain(Texts.DELETE_CONFIRM);
+        }
+
         @Test
         void assigneeCannotDelete() {
             Task task = tasks.create(mom, kid.id(), "Вынести мусор", DUE);
@@ -446,6 +463,23 @@ class TaskEditHandlerTest {
     }
 
     // --- вспомогательное ---
+
+    /** Вхождение серии, собранное напрямую: экрану важно только то, что оно помнит своё правило. */
+    private Task occurrence() {
+        Task task =
+                Task.createOccurrence(
+                        repository.nextId(),
+                        mom.familyId(),
+                        "Тренировка",
+                        mom.id(),
+                        java.util.List.of(new com.familytodo.domain.Assignee(kid.id(), Role.CHILD)),
+                        DUE,
+                        77L,
+                        java.time.LocalDate.of(2026, 8, 7),
+                        NOW);
+        repository.saveOccurrence(task);
+        return task;
+    }
 
     private Task reload(Task task) {
         return repository.findById(mom.familyId(), task.id()).orElseThrow();

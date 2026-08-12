@@ -63,6 +63,12 @@ public final class TaskCardView {
         if (AssigneeNames.anyoneDeclined(task)) {
             out.append('\n');
         }
+
+        // ⚠️ Без этой строки «Удалить» на вхождении выглядит как обычное удаление, а дело
+        // возвращается: удаляется один день, само правило продолжает работать.
+        if (task.isOccurrence()) {
+            out.append('\n').append(Texts.TASK_IS_OCCURRENCE);
+        }
         return out.toString();
     }
 
@@ -95,9 +101,24 @@ public final class TaskCardView {
                             editButton("Изменить", TaskEditView.MENU, argument),
                             editButton("Удалить", TaskEditView.DELETE, argument)));
         }
-        builder.keyboardRow(
+        InlineKeyboardRow footer =
                 new InlineKeyboardRow(
-                        button("← Назад", BACK, String.valueOf(TaskRef.letter(kind)))));
+                        button("← Назад", BACK, String.valueOf(TaskRef.letter(kind))));
+        // ⚠️ Переход к правилу — единственный способ распорядиться повторением: из карточки
+        // вхождения видно только один день, а «больше не повторять» живёт на серии
+        if (task.isOccurrence()) {
+            footer.add(
+                    InlineKeyboardButton.builder()
+                            .text(Texts.TASK_TO_SERIES)
+                            .callbackData(
+                                    CallbackData.of(
+                                                    SeriesView.PREFIX,
+                                                    SeriesView.OPEN,
+                                                    task.seriesId())
+                                            .serialize())
+                            .build());
+        }
+        builder.keyboardRow(footer);
         return builder.build();
     }
 

@@ -37,7 +37,8 @@ public class JdbcTaskRepository implements TaskRepository {
     private static final String SELECT =
             """
             select t.id, t.family_id, t.title, t.creator_id, t.status, t.due_at,
-                   t.created_at, t.closed_at, t.starts_at, t.ends_at, t.location
+                   t.created_at, t.closed_at, t.starts_at, t.ends_at, t.location,
+                   t.series_id, t.occurrence_on
             from task t
             """;
 
@@ -154,7 +155,7 @@ public class JdbcTaskRepository implements TaskRepository {
     }
 
     @Override
-    public void saveOccurrence(Task task, long seriesId, LocalDate occurrenceOn) {
+    public void saveOccurrence(Task task) {
         int inserted =
                 jdbc.sql(INSERT_OCCURRENCE)
                         .params(
@@ -169,8 +170,8 @@ public class JdbcTaskRepository implements TaskRepository {
                                 Instants.write(task.startsAt()),
                                 Instants.write(task.endsAt()),
                                 task.location(),
-                                seriesId,
-                                occurrenceOn.toString())
+                                task.seriesId(),
+                                task.occurrenceOn().toString())
                         .update();
 
         // вхождение уже было — его исполнители тоже, и переписывать их поверх чужой правки нельзя
@@ -279,9 +280,39 @@ public class JdbcTaskRepository implements TaskRepository {
 
     @Override
     public void delete(long familyId, long taskId) {
+        // ⚠️ Сначала пропуск, потом удаление: после delete строки уже нет, и узнать, какой день
+        // серии человек убрал, будет неоткуда. Обычного дела условие не касается — у него
+        // series_id пуст, и insert ... select не вставляет ни строки.
+        jdbc.sql(
+                        """
+                        insert into task_series_skip (series_id, occurrence_on)
+                        select series_id, occurrence_on from task
+                        where family_id = ? and id = ? and series_id is not null
+                        on conflict (series_id, occurrence_on) do nothing
+                        """)
+                .params(familyId, taskId)
+                .update();
+
         jdbc.sql("delete from task where family_id = ? and id = ?")
                 .params(familyId, taskId)
                 .update();
+    }
+
+    @Override
+    public Set<LocalDate> skippedDates(long familyId, long seriesId, LocalDate from, LocalDate to) {
+        return jdbc.sql(
+                        """
+                        select k.occurrence_on from task_series_skip k
+                        join task_series s on s.id = k.series_id
+                        where s.family_id = ? and k.series_id = ?
+                          and k.occurrence_on >= ? and k.occurrence_on <= ?
+                        """)
+                .params(familyId, seriesId, from.toString(), to.toString())
+                .query(String.class)
+                .list()
+                .stream()
+                .map(LocalDate::parse)
+                .collect(Collectors.toCollection(HashSet::new));
     }
 
     /**

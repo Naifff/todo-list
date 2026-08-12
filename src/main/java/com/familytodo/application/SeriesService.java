@@ -226,13 +226,17 @@ public class SeriesService {
         LocalDate to = from.plusDays(HORIZON_DAYS - 1L);
 
         Set<LocalDate> already = tasks.occurrenceDates(rule.familyId(), rule.id(), from, to);
+        // ⚠️ пропущенные дни живут отдельной таблицей и обязаны учитываться здесь: без этого
+        // удаление вхождения было бы обманом — строки нет, значит даты «не хватает», значит
+        // джоба создаёт её заново в течение часа
+        Set<LocalDate> skipped = tasks.skippedDates(rule.familyId(), rule.id(), from, to);
 
         int created = 0;
         for (LocalDate date : rule.occurrencesBetween(from, to)) {
-            if (already.contains(date)) {
+            if (already.contains(date) || skipped.contains(date)) {
                 continue;
             }
-            tasks.saveOccurrence(occurrence(rule, date, zone, now), rule.id(), date);
+            tasks.saveOccurrence(occurrence(rule, date, zone, now));
             created++;
         }
         if (created > 0) {
@@ -250,24 +254,28 @@ public class SeriesService {
 
         if (endsAt == null) {
             // без длительности вхождение — обычное дело со сроком
-            return Task.create(
+            return Task.createOccurrence(
                     tasks.nextId(),
                     rule.familyId(),
                     rule.title(),
                     rule.creatorId(),
                     rule.assignees(),
                     startsAt,
+                    rule.id(),
+                    date,
                     now);
         }
 
         Task task =
-                Task.create(
+                Task.createOccurrence(
                         tasks.nextId(),
                         rule.familyId(),
                         rule.title(),
                         rule.creatorId(),
                         rule.assignees(),
                         null,
+                        rule.id(),
+                        date,
                         now);
         // расписание ставит автор серии: он же его и задал, когда заводил правило
         task.schedule(

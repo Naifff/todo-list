@@ -36,7 +36,9 @@ public final class TaskRowMapper implements RowMapper<TaskRowMapper.TaskRow> {
             Instant closedAt,
             Instant startsAt,
             Instant endsAt,
-            String location) {
+            String location,
+            Long seriesId,
+            java.time.LocalDate occurrenceOn) {
 
         public Task toTask(List<Assignment> assignments) {
             return Task.restore(
@@ -51,8 +53,20 @@ public final class TaskRowMapper implements RowMapper<TaskRowMapper.TaskRow> {
                     closedAt,
                     startsAt,
                     endsAt,
-                    location);
+                    location,
+                    seriesId,
+                    occurrenceOn);
         }
+    }
+
+    /** {@code getLong} отдаёт 0 вместо null, поэтому серия читается через проверку {@code wasNull}. */
+    private static Long seriesId(ResultSet rs) throws SQLException {
+        long value = rs.getLong("series_id");
+        return rs.wasNull() ? null : value;
+    }
+
+    private static java.time.LocalDate date(String stored) {
+        return stored == null ? null : java.time.LocalDate.parse(stored);
     }
 
     @Override
@@ -68,6 +82,8 @@ public final class TaskRowMapper implements RowMapper<TaskRowMapper.TaskRow> {
                 Instants.read(rs, "closed_at"),
                 Instants.read(rs, "starts_at"),
                 Instants.read(rs, "ends_at"),
-                rs.getString("location"));
+                rs.getString("location"),
+                seriesId(rs),
+                date(rs.getString("occurrence_on")));
     }
 }

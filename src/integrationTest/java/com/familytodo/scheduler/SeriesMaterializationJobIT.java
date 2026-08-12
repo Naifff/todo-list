@@ -343,6 +343,60 @@ class SeriesMaterializationJobIT extends AbstractSqliteIT {
     }
 
     /**
+     * «В эту пятницу тренировки не будет» — самый частый способ распорядиться серией, и до сих пор
+     * он не работал: строку стирали, а джоба возвращала её в течение часа.
+     */
+    @Nested
+    class SkippingOneDay {
+
+        @Test
+        void aDeletedOccurrenceDoesNotComeBack() {
+            daily(LocalTime.of(8, 0));
+            job.materialiseAll();
+            Task tomorrow = occurrences().get(1);
+            LocalDate day = tomorrow.occurrenceOn();
+
+            tasks.delete(family.id(), tomorrow.id());
+            job.materialiseAll();
+
+            assertThat(countOn(day)).isZero();
+        }
+
+        /** Пропуск — про один день, а не про правило: остальные повторы остаются. */
+        @Test
+        void theRestOfTheSeriesSurvivesTheSkip() {
+            daily(LocalTime.of(8, 0));
+            job.materialiseAll();
+            int before = occurrences().size();
+            Task tomorrow = occurrences().get(1);
+
+            tasks.delete(family.id(), tomorrow.id());
+            job.materialiseAll();
+
+            assertThat(occurrences()).hasSize(before - 1);
+        }
+
+        /** Обычное дело удаляется как удалялось: пропуск ему приписать некуда. */
+        @Test
+        void deletingAnOrdinaryTaskRecordsNothing() {
+            Task plain =
+                    tasks.save(
+                            Task.create(
+                                    tasks.nextId(),
+                                    family.id(),
+                                    "Вынести мусор",
+                                    mom.id(),
+                                    List.of(new Assignee(kid.id(), Role.CHILD)),
+                                    NOW,
+                                    NOW));
+
+            tasks.delete(family.id(), plain.id());
+
+            assertThat(tasks.findById(family.id(), plain.id())).isEmpty();
+        }
+    }
+
+    /**
      * Верхняя граница — отложенная остановка: серия доживает до названного дня и дальше не идёт.
      * Проверяется на настоящей базе, потому что интересна именно связка «граница + джоба»: правило в
      * домене можно было бы соблюсти и без единой убранной строки.

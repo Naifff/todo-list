@@ -26,6 +26,7 @@ public final class InMemoryTaskRepository implements TaskRepository {
 
     private final Map<Long, Task> tasks = new LinkedHashMap<>();
     private final Map<Occurrence, Long> occurrences = new LinkedHashMap<>();
+    private final Set<Occurrence> skipped = new java.util.LinkedHashSet<>();
     private final AtomicLong sequence = new AtomicLong();
 
     @Override
@@ -60,20 +61,46 @@ public final class InMemoryTaskRepository implements TaskRepository {
         return found;
     }
 
+    /**
+     * Удаление вхождения записывает пропуск — ровно как {@code JdbcTaskRepository.delete}. Фейк,
+     * который прощает больше базы или помнит меньше неё, обесценивает тесты юзкейсов.
+     */
     @Override
     public void delete(long familyId, long taskId) {
-        findById(familyId, taskId).ifPresent(task -> tasks.remove(task.id()));
+        findById(familyId, taskId)
+                .ifPresent(
+                        task -> {
+                            if (task.isOccurrence()) {
+                                skipped.add(new Occurrence(task.seriesId(), task.occurrenceOn()));
+                            }
+                            occurrences.values().remove(task.id());
+                            tasks.remove(task.id());
+                        });
     }
 
     @Override
-    public void saveOccurrence(Task task, long seriesId, LocalDate occurrenceOn) {
-        // тот же запрет на дубль, что даёт уникальный индекс в схеме: фейк, который
-        // прощает больше базы, обесценивает тесты юзкейсов
-        if (occurrences.containsKey(new Occurrence(seriesId, occurrenceOn))) {
+    public void saveOccurrence(Task task) {
+        Occurrence key = new Occurrence(task.seriesId(), task.occurrenceOn());
+        // тот же запрет на дубль, что даёт уникальный индекс в схеме
+        if (occurrences.containsKey(key)) {
             return;
         }
-        occurrences.put(new Occurrence(seriesId, occurrenceOn), task.id());
+        occurrences.put(key, task.id());
         tasks.put(task.id(), task);
+    }
+
+    @Override
+    public Set<LocalDate> skippedDates(
+            long familyId, long seriesId, LocalDate from, LocalDate to) {
+        Set<LocalDate> dates = new HashSet<>();
+        for (Occurrence key : skipped) {
+            if (key.seriesId() == seriesId
+                    && !key.date().isBefore(from)
+                    && !key.date().isAfter(to)) {
+                dates.add(key.date());
+            }
+        }
+        return dates;
     }
 
     @Override
