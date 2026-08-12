@@ -152,7 +152,7 @@ public class SeriesService {
      * <p>Закрытые остаются: {@code DONE} и {@code DECLINED} — история семьи, и остановка правила не
      * повод её стирать. Строка серии тоже остаётся: на неё ссылается эта история.
      */
-    public TaskSeries stop(Member actor, long seriesId) {
+    public Stopped stop(Member actor, long seriesId) {
         TaskSeries rule = require(actor, seriesId);
 
         rule.stop(actor.asActor(), clock.instant());
@@ -162,8 +162,14 @@ public class SeriesService {
                 tasks.deleteOpenOccurrencesFrom(
                         rule.familyId(), rule.id(), family(actor.familyId()).today(clock.instant()));
         log.info("series {} stopped, {} future occurrences removed", rule.id(), removed);
-        return rule;
+        return new Stopped(rule, removed);
     }
+
+    /**
+     * Сколько дел ушло — часть ответа, а не подробность для журнала: остановка вечерней тренировки
+     * убирает из списков и календаря семьи десяток дел, и человек вправе увидеть это числом.
+     */
+    public record Stopped(TaskSeries series, int removed) {}
 
     /** Заполнить горизонт по всем семьям. Вызывается джобой, «смотрящего» у неё нет. */
     public void materialiseAll() {

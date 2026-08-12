@@ -181,6 +181,21 @@ public final class Texts {
 
     public static final String SERIES_BACK = "← К списку";
 
+    public static final String SERIES_STOP = "⏹ Остановить";
+
+    /**
+     * Переспрашиваем, потому что остановка убирает будущие дела у всей семьи разом, а вернуть их
+     * можно только заведя правило заново.
+     */
+    public static final String SERIES_STOP_CONFIRM =
+            "Больше не повторять? Будущие дела уйдут из списков, сделанное останется в истории.";
+
+    public static final String SERIES_STOP_OK = "Да, остановить";
+
+    public static final String SERIES_STOP_CANCEL = "Отмена";
+
+    public static final String SERIES_STOPPED = "Серия остановлена.";
+
     // --- карточка ---
 
     public static final String ASK_DECLINE_REASON = "Почему не получится?";

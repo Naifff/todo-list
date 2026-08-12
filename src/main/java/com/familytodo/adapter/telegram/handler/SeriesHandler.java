@@ -74,8 +74,28 @@ public class SeriesHandler implements CommandHandler, CallbackHandler {
         switch (data.action()) {
             case SeriesView.OPEN -> showCard(request, viewer, data.longArgument());
             case SeriesView.BACK -> showList(request, viewer);
+            case SeriesView.STOP -> askToStop(request, viewer, data.longArgument());
+            case SeriesView.STOP_OK -> stop(request, viewer, data.longArgument());
             default -> throw new IllegalArgumentException("unknown series action " + data.action());
         }
+    }
+
+    /** Спрашиваем, а не гасим сразу: будущие дела уйдут у всей семьи, а вернуть их нечем. */
+    private void askToStop(BotRequest request, Member viewer, long seriesId) {
+        TaskSeries rule = series.require(viewer, seriesId);
+        edit(
+                request,
+                SeriesView.stopConfirmation(rule, roster(viewer)),
+                SeriesView.stopKeyboard(rule));
+    }
+
+    private void stop(BotRequest request, Member viewer, long seriesId) {
+        SeriesService.Stopped stopped = series.stop(viewer, seriesId);
+        List<TaskSeries> active = series.active(viewer);
+        edit(
+                request,
+                SeriesView.stopped(stopped.removed()) + "\n\n" + SeriesView.list(active, roster(viewer)),
+                SeriesView.listKeyboard(active));
     }
 
     /**

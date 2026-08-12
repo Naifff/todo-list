@@ -27,6 +27,10 @@ public final class SeriesView {
 
     public static final String BACK = "b";
 
+    public static final String STOP = "s";
+
+    public static final String STOP_OK = "sok";
+
     /**
      * У «← Назад» аргумента нет — список один. Пустую строку {@link CallbackData} не принимает, а
      * заводить ради этого второй формат нечестнее, чем одна буква.
@@ -107,13 +111,46 @@ public final class SeriesView {
 
     public static InlineKeyboardMarkup cardKeyboard(TaskSeries rule) {
         return InlineKeyboardMarkup.builder()
+                .keyboardRow(new InlineKeyboardRow(button(Texts.SERIES_STOP, STOP, rule.id())))
+                .keyboardRow(new InlineKeyboardRow(backButton()))
+                .build();
+    }
+
+    /** Подтверждение остановки: карточка остаётся на экране, чтобы было видно, что именно гасим. */
+    public static String stopConfirmation(TaskSeries rule, Map<Long, Member> byId) {
+        return card(rule, byId) + "\n\n" + Texts.SERIES_STOP_CONFIRM;
+    }
+
+    public static InlineKeyboardMarkup stopKeyboard(TaskSeries rule) {
+        return InlineKeyboardMarkup.builder()
                 .keyboardRow(
                         new InlineKeyboardRow(
-                                InlineKeyboardButton.builder()
-                                        .text(Texts.SERIES_BACK)
-                                        .callbackData(
-                                                new CallbackData(PREFIX, BACK, LIST).serialize())
-                                        .build()))
+                                button(Texts.SERIES_STOP_OK, STOP_OK, rule.id()),
+                                button(Texts.SERIES_STOP_CANCEL, OPEN, rule.id())))
+                .build();
+    }
+
+    /**
+     * Число ушедших дел — не подробность: остановка вечерней тренировки убирает из списков и
+     * календаря семьи десяток дел сразу, и «серия остановлена» без числа этого не показывает.
+     */
+    public static String stopped(int removed) {
+        return removed == 0
+                ? Texts.SERIES_STOPPED
+                : Texts.SERIES_STOPPED + " Убрано будущих дел: " + removed + ".";
+    }
+
+    private static InlineKeyboardButton button(String label, String action, long seriesId) {
+        return InlineKeyboardButton.builder()
+                .text(label)
+                .callbackData(CallbackData.of(PREFIX, action, seriesId).serialize())
+                .build();
+    }
+
+    private static InlineKeyboardButton backButton() {
+        return InlineKeyboardButton.builder()
+                .text(Texts.SERIES_BACK)
+                .callbackData(new CallbackData(PREFIX, BACK, LIST).serialize())
                 .build();
     }
 

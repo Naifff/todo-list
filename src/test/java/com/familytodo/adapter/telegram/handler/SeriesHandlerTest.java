@@ -11,6 +11,7 @@ import com.familytodo.adapter.telegram.view.SeriesView;
 import com.familytodo.adapter.telegram.view.Texts;
 import com.familytodo.application.FamilyService;
 import com.familytodo.application.SeriesService;
+import com.familytodo.application.TaskQuery;
 import com.familytodo.application.fake.FakeNotifier;
 import com.familytodo.application.fake.InMemoryFamilyRepository;
 import com.familytodo.application.fake.InMemoryMemberRepository;
@@ -204,6 +205,59 @@ class SeriesHandlerTest {
     }
 
     @Nested
+    class Stopping {
+
+        /** Остановка убирает будущие дела у всей семьи — переспросить дешевле, чем восстанавливать. */
+        @Test
+        void stopAsksForConfirmationInsteadOfStoppingRightAway() {
+            TaskSeries training = training();
+
+            handler.handle(callback(mom), stop(training.id()));
+
+            assertThat(sender.edits.getFirst()).contains(Texts.SERIES_STOP_CONFIRM);
+            assertThat(seriesService.active(mom)).hasSize(1);
+        }
+
+        @Test
+        void confirmingRemovesTheSeriesAndSaysHowManyTasksWentAway() {
+            TaskSeries training = training();
+            int materialised = tasks.find(everythingOpenOf(mom)).size();
+            assertThat(materialised).isPositive();
+
+            handler.handle(callback(mom), confirmStop(training.id()));
+
+            assertThat(seriesService.active(mom)).isEmpty();
+            assertThat(sender.edits.getLast())
+                    .contains(Texts.SERIES_STOPPED)
+                    .contains(String.valueOf(materialised));
+            assertThat(tasks.find(everythingOpenOf(mom))).isEmpty();
+        }
+
+        /**
+         * ⚠️ Право проверяется заново, а не кнопкой: исполнитель — не распорядитель. Петя ходит на
+         * тренировку, но отменяет её тот, кто договаривался.
+         */
+        @Test
+        void theChildTheSeriesIsAboutStillMayNotStopIt() {
+            TaskSeries training = training();
+
+            assertThatThrownBy(() -> handler.handle(callback(kid), confirmStop(training.id())))
+                    .isInstanceOf(DomainException.NotPermitted.class);
+            assertThat(seriesService.active(mom)).hasSize(1);
+        }
+
+        /** Родитель распоряжается делом ребёнка — то же правило, что у правки задачи. */
+        @Test
+        void anotherParentMayStopTheSeriesOfAChild() {
+            TaskSeries training = training();
+
+            handler.handle(callback(dad), confirmStop(training.id()));
+
+            assertThat(seriesService.active(mom)).isEmpty();
+        }
+    }
+
+    @Nested
     class Escaping {
 
         /**
@@ -246,6 +300,18 @@ class SeriesHandlerTest {
 
     private static CallbackData open(long seriesId) {
         return CallbackData.of(SeriesView.PREFIX, SeriesView.OPEN, seriesId);
+    }
+
+    private static CallbackData stop(long seriesId) {
+        return CallbackData.of(SeriesView.PREFIX, SeriesView.STOP, seriesId);
+    }
+
+    private static CallbackData confirmStop(long seriesId) {
+        return CallbackData.of(SeriesView.PREFIX, SeriesView.STOP_OK, seriesId);
+    }
+
+    private static TaskQuery everythingOpenOf(Member viewer) {
+        return TaskQuery.visibleTo(viewer);
     }
 
     private Member join(long telegramUserId, String name, Role role) {

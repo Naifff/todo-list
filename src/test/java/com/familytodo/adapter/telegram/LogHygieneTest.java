@@ -33,13 +33,18 @@ import com.familytodo.application.fake.InMemoryMemberRepository;
 import com.familytodo.application.fake.InMemoryShoppingRepository;
 import com.familytodo.application.fake.InMemoryTaskRepository;
 import com.familytodo.application.fake.InMemoryTaskSeriesRepository;
+import com.familytodo.adapter.telegram.handler.SeriesHandler;
+import com.familytodo.adapter.telegram.view.SeriesView;
 import com.familytodo.domain.InviteCodeGenerator;
 import com.familytodo.domain.Member;
+import com.familytodo.domain.Recurrence;
 import com.familytodo.domain.Role;
 import com.familytodo.domain.ShoppingList;
 import com.familytodo.domain.Task;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -56,7 +61,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
  *
  * <p>Журнал уезжает в journald на машине, где живёт чужой VPN, и читать его будет кто угодно с
  * доступом к серверу. Проверяем не «логи вообще» — такое утверждение непроверяемо, — а конкретные
- * сценарии: создание, закрытие, отказ, приглашение и исключение участника.
+ * сценарии: создание, закрытие, отказ, приглашение, исключение участника и остановку серии.
  *
  * <p>Уровень поднят до TRACE намеренно. В проде стоит INFO, но утечка на DEBUG — это утечка,
  * отложенная до первой попытки что-нибудь отладить на живом сервере.
@@ -100,6 +105,8 @@ class LogHygieneTest {
     private NewTaskHandler newTask;
     private TaskActionHandler actions;
     private FamilyHandler family;
+    private SeriesService seriesService;
+    private SeriesHandler seriesHandler;
 
     private Member mom;
     private Member kid;
@@ -113,11 +120,13 @@ class LogHygieneTest {
                         sender,
                         dialogs);
         taskService = new TaskService(tasks, members, notifier, clock);
+        seriesService = new SeriesService(families, seriesRepository, tasks, members, clock);
+        seriesHandler = new SeriesHandler(seriesService, familyService, sender);
         newTask =
                 new NewTaskHandler(
                         taskService,
                         familyService,
-                        new SeriesService(families, seriesRepository, tasks, members, clock),
+                        seriesService,
                         dialogs,
                         new DueDateParser(clock),
                         sender);
@@ -231,6 +240,30 @@ class LogHygieneTest {
         createTask();
 
         family.handle(callback(mom), new CallbackData(FamilyView.PREFIX, FamilyView.REMOVE_DO, String.valueOf(kid.id())));
+
+        assertThat(captured()).isNotEmpty();
+        assertNothingLeaked();
+    }
+
+    /**
+     * Остановка серии закрывает разом десяток вхождений — тем же путём мог бы утечь их текст, а он у
+     * всех один и тот же: название правила.
+     */
+    @Test
+    void stoppingASeriesLogsNeitherItsTitleNorNames() {
+        var rule =
+                seriesService.create(
+                        mom,
+                        List.of(kid.id()),
+                        TITLE,
+                        Recurrence.weekdays(),
+                        LocalTime.of(18, 0),
+                        null,
+                        null,
+                        LocalDate.of(2026, 8, 7));
+
+        seriesHandler.handle(
+                callback(mom), CallbackData.of(SeriesView.PREFIX, SeriesView.STOP_OK, rule.id()));
 
         assertThat(captured()).isNotEmpty();
         assertNothingLeaked();
