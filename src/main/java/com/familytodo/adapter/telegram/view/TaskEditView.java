@@ -78,9 +78,7 @@ public final class TaskEditView {
         List<InlineKeyboardRow> rows = new ArrayList<>();
         InlineKeyboardRow row = new InlineKeyboardRow();
         for (Member member : family) {
-            // цвет кружком — тот же, что в составе семьи и в расписании: «синий это папа»
-            // узнаётся один раз на все экраны. Цвет отвечает «кто», точки — «выбран»
-            String name = FamilyView.dot(member.color()) + " " + HtmlEscaper.escape(member.displayName());
+            String name = HtmlEscaper.escape(member.displayName());
             row.add(
                     button(
                             current.contains(member.id()) ? "· " + name + " ·" : name,

@@ -443,55 +443,6 @@ class NewTaskHandlerTest {
         }
     }
 
-    /**
-     * ⚠️ Цвет текста кнопки в Telegram задать нечем — цвет участника приходит кружком, тем же, что в
-     * составе семьи и в расписании. Отметки при этом остаются: цвет говорит «кто», точки — «выбран».
-     */
-    @Nested
-    class ColouredPicker {
-
-        @Test
-        void everyNameCarriesItsOwnersColour() {
-            handler.handle(command(mom));
-            handler.continueDialog(text(mom, "Вынести мусор"));
-
-            assertThat(labels()).anySatisfy(label -> assertThat(label).contains(dot(kid)));
-            assertThat(labels()).anySatisfy(label -> assertThat(label).contains(dot(mom)));
-        }
-
-        @Test
-        void theColourStaysWhenTheNameIsTicked() {
-            handler.handle(command(mom));
-            handler.continueDialog(text(mom, "Вынести мусор"));
-
-            handler.handle(callback(mom), toggleAssignee(kid.id()));
-
-            List<String> ticked = labelsOf(sender.markups.getLast());
-            assertThat(ticked)
-                    .anySatisfy(
-                            label ->
-                                    assertThat(label)
-                                            .contains(dot(kid))
-                                            .startsWith("·")
-                                            .endsWith("·"));
-        }
-
-        private String dot(Member member) {
-            return com.familytodo.adapter.telegram.view.FamilyView.dot(member.color());
-        }
-
-        private List<String> labels() {
-            return labelsOf(sender.markups.getLast());
-        }
-
-        private List<String> labelsOf(InlineKeyboardMarkup markup) {
-            return markup.getKeyboard().stream()
-                    .flatMap(java.util.Collection::stream)
-                    .map(button -> button.getText())
-                    .toList();
-        }
-    }
-
     @Nested
     class CustomDueDate {
 

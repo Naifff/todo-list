@@ -1,7 +1,6 @@
 package com.familytodo.adapter.telegram.keyboard;
 
 import com.familytodo.adapter.telegram.CallbackData;
-import com.familytodo.adapter.telegram.view.FamilyView;
 import com.familytodo.adapter.telegram.view.HtmlEscaper;
 import com.familytodo.domain.Member;
 import java.time.DayOfWeek;
@@ -62,10 +61,7 @@ public final class NewTaskKeyboards {
             List<Member> family, long selfId, List<Long> chosen) {
 
         List<InlineKeyboardRow> rows = new ArrayList<>();
-        rows.add(
-                new InlineKeyboardRow(
-                        assigneeButton(
-                                withColour(self(family, selfId), "Себе"), selfId, chosen)));
+        rows.add(new InlineKeyboardRow(assigneeButton("Себе", selfId, chosen)));
 
         InlineKeyboardRow row = new InlineKeyboardRow();
         for (Member member : family) {
@@ -74,9 +70,7 @@ public final class NewTaskKeyboards {
             }
             row.add(
                     assigneeButton(
-                            withColour(member, HtmlEscaper.escape(member.displayName())),
-                            member.id(),
-                            chosen));
+                            HtmlEscaper.escape(member.displayName()), member.id(), chosen));
             if (row.size() == 2) {
                 rows.add(row);
                 row = new InlineKeyboardRow();
@@ -145,22 +139,6 @@ public final class NewTaskKeyboards {
     }
 
     /** Отмеченные видны прямо на кнопках — как и в выборе дней недели. */
-    /**
-     * Цвет участника кружком перед именем.
-     *
-     * <p>⚠️ Цвет текста кнопки Telegram задать не даёт — эмодзи единственный способ. Кружок тот же,
-     * что в составе семьи и в расписании, поэтому «синий — это папа» узнаётся один раз на все
-     * экраны. Отметки при этом остаются: цвет отвечает «кто», точки — «выбран».
-     */
-    private static String withColour(Member member, String label) {
-        return member == null ? label : FamilyView.dot(member.color()) + " " + label;
-    }
-
-    /** Себя в списке может не оказаться только если состав пришёл неполным — тогда просто без цвета. */
-    private static Member self(List<Member> family, long selfId) {
-        return family.stream().filter(member -> member.id() == selfId).findFirst().orElse(null);
-    }
-
     private static InlineKeyboardButton assigneeButton(
             String label, long memberId, List<Long> chosen) {
         return InlineKeyboardButton.builder()
