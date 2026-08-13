@@ -376,6 +376,73 @@ class NewTaskHandlerTest {
         }
     }
 
+    /**
+     * Дело одной строкой: «сходить на ролики 14.08 18:30-20:00 цирк». Срок кнопками после этого
+     * спрашивать нечего — он уже назван.
+     */
+    @Nested
+    class WrittenInOneLine {
+
+        @Test
+        void theWholeThingCanBeTypedAtOnce() {
+            handler.handle(command(mom));
+            handler.continueDialog(text(mom, "сходить на ролики 14.08 18:30-20:00 цирк"));
+            sender.clear();
+
+            pickOne(mom, kid);
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.ONCE));
+
+            Task created = tasks.find(TaskQuery.visibleTo(mom)).getFirst();
+            assertThat(created.title()).isEqualTo("сходить на ролики");
+            assertThat(created.startsAt()).isEqualTo(Instant.parse("2026-08-14T15:30:00Z"));
+            assertThat(created.endsAt()).isEqualTo(Instant.parse("2026-08-14T17:00:00Z"));
+            assertThat(created.location()).isEqualTo("цирк");
+        }
+
+        /** Тот же разбор из самой команды: {@code /new сходить на ролики 14.08 18:30 цирк}. */
+        @Test
+        void theCommandItselfCarriesTheTask() {
+            handler.handle(commandWith(mom, "сходить на ролики 14.08 18:30-20:00 цирк"));
+
+            assertThat(sender.texts).containsExactly(Texts.ASK_ASSIGNEES);
+
+            pickOne(mom, kid);
+            handler.handle(callback(mom), repeat(NewTaskKeyboards.ONCE));
+
+            assertThat(tasks.find(TaskQuery.visibleTo(mom)).getFirst().title())
+                    .isEqualTo("сходить на ролики");
+        }
+
+        /** ⚠️ Срок уже назван — вопрос о нём был бы вторым «когда?» подряд. */
+        @Test
+        void theDueDateIsNotAskedTwice() {
+            handler.handle(commandWith(mom, "вынести мусор 19:00"));
+            sender.clear();
+
+            pickOne(mom, kid);
+
+            assertThat(sender.texts).containsExactly(Texts.ASK_REPEAT);
+        }
+
+        /** Название без даты работает как работало: срок спрашивается кнопками. */
+        @Test
+        void aPlainTitleStillGetsTheDueButtons() {
+            handler.handle(commandWith(mom, "вынести мусор"));
+            sender.clear();
+
+            pickOne(mom, kid);
+
+            assertThat(sender.texts).containsExactly(Texts.ASK_DUE);
+        }
+
+        @Test
+        void aCommandWithoutAnythingWrittenAsksForTheTitle() {
+            handler.handle(command(mom));
+
+            assertThat(sender.texts).containsExactly(Texts.ASK_TASK_TITLE);
+        }
+    }
+
     @Nested
     class CustomDueDate {
 
@@ -827,6 +894,20 @@ class NewTaskHandlerTest {
 
     private static BotRequest text(Member member, String text) {
         return request(member, text, Optional.empty(), Optional.empty());
+    }
+
+    /** {@code /new сходить на ролики 14.08 18:30 цирк} — дело целиком в самой команде. */
+    private static BotRequest commandWith(Member member, String argument) {
+        return new BotRequest(
+                member.telegramUserId(),
+                member.privateChatId(),
+                member.displayName(),
+                Optional.of(member),
+                "/new " + argument,
+                Optional.of("new"),
+                Optional.of(argument),
+                Optional.of(1),
+                Optional.empty());
     }
 
     private static BotRequest callback(Member member) {

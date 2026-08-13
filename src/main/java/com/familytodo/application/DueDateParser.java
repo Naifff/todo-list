@@ -45,6 +45,21 @@ public class DueDateParser {
     private static final Pattern DATE_ONLY =
             Pattern.compile("^(\\d{1,2})\\.(\\d{1,2})(?:\\.(\\d{4}))?$");
 
+    /**
+     * Где в строке начинается «когда»: дата или время, отдельным словом.
+     *
+     * <p>⚠️ Разделить название и срок надёжно нельзя в принципе: «купить 5.5 кг» с виду не
+     * отличается от «купить 5 мая». Ставка сделана осознанно — количества живут в списке покупок,
+     * у которого свой экран, а сюда пишут дела. Ошибка при этом видна сразу: карточка приходит
+     * следующим сообщением с разобранным сроком, и её видно до того, как о деле забыли.
+     */
+    private static final Pattern WHEN_INSIDE =
+            Pattern.compile("(?<![\\d.:])(\\d{1,2}\\.\\d{1,2}(?:\\.\\d{4})?|\\d{1,2}:\\d{2})(?![\\d.:])");
+
+    /** «вынести мусор к 19:00» — дело называется без предлога, он относится к сроку. */
+    private static final Pattern TRAILING_PREPOSITION =
+            Pattern.compile("\\s+(?:к|ко|в|во|с|со|на|до|от)$", Pattern.CASE_INSENSITIVE);
+
     /** «08:00-08:40 школа», «19:00 дом», «Zoom» — время необязательно, место тоже. */
     private static final Pattern SLOT =
             Pattern.compile(
@@ -79,6 +94,39 @@ public class DueDateParser {
         }
         return at(date, DEFAULT_TIME, zone);
     }
+
+    /**
+     * Дело, написанное одной строкой: {@code сходить на ролики 14.08 18:30-20:00 цирк}.
+     *
+     * <p>Название спереди, «когда и где» сзади — так это и пишется человеком, и так короче на три
+     * нажатия: срок кнопками спрашивать уже нечего.
+     *
+     * <p>Пустой результат — «это просто название»: дальше сработает обычный сценарий с кнопками
+     * срока.
+     */
+    public Optional<Titled> parseTitled(String input, ZoneId zone) {
+        if (input == null || input.isBlank()) {
+            return Optional.empty();
+        }
+        String trimmed = input.trim();
+
+        Matcher when = WHEN_INSIDE.matcher(trimmed);
+        if (!when.find()) {
+            return Optional.empty();
+        }
+
+        String title = TRAILING_PREPOSITION.matcher(trimmed.substring(0, when.start()).strip())
+                .replaceFirst("");
+        if (title.isBlank()) {
+            // «14.08 18:30 цирк» — время есть, дела нет: называть его нечем
+            return Optional.empty();
+        }
+        return parsePlan(trimmed.substring(when.start()), zone)
+                .map(plan -> new Titled(title, plan));
+    }
+
+    /** Название и разобранное «когда и где» из одной строки. */
+    public record Titled(String title, Plan plan) {}
 
     /**
      * Только дата, без времени: {@code 31.05} или {@code 31.05.2027}.

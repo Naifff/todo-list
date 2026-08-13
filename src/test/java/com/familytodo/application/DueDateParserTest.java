@@ -224,6 +224,67 @@ class DueDateParserTest {
         }
     }
 
+    /**
+     * Дело одной строкой: «сходить на ролики 14.08 18:30-20:00 цирк». Название спереди, когда и где
+     * — сзади, ровно как это пишется человеком.
+     */
+    @Nested
+    class WrittenInOneLine {
+
+        @Test
+        void splitsTitleFromDateTimeAndPlace() {
+            DueDateParser.Titled written =
+                    parser.parseTitled("сходить на ролики 14.08 18:30-20:00 цирк", MOSCOW)
+                            .orElseThrow();
+
+            assertThat(written.title()).isEqualTo("сходить на ролики");
+            assertThat(written.plan().startsAt()).isEqualTo(Instant.parse("2026-08-14T15:30:00Z"));
+            assertThat(written.plan().endsAt()).isEqualTo(Instant.parse("2026-08-14T17:00:00Z"));
+            assertThat(written.plan().location()).isEqualTo("цирк");
+        }
+
+        @Test
+        void aTimeAloneIsEnough() {
+            DueDateParser.Titled written =
+                    parser.parseTitled("вынести мусор 19:00", MOSCOW).orElseThrow();
+
+            assertThat(written.title()).isEqualTo("вынести мусор");
+            assertThat(written.plan().dueAt()).isEqualTo(Instant.parse("2026-08-07T16:00:00Z"));
+        }
+
+        /**
+         * ⚠️ «к 19:00» — как это и говорится по-русски, и предлог обязан остаться за границей
+         * названия: дело называется «вынести мусор», а не «вынести мусор к».
+         */
+        @Test
+        void aTrailingPrepositionDoesNotStickToTheTitle() {
+            assertThat(parser.parseTitled("вынести мусор к 19:00", MOSCOW).orElseThrow().title())
+                    .isEqualTo("вынести мусор");
+            assertThat(parser.parseTitled("забрать Петю в 14.08", MOSCOW).orElseThrow().title())
+                    .isEqualTo("забрать Петю");
+        }
+
+        /** Без даты и времени разбирать нечего — это обычное название, спросим срок кнопками. */
+        @Test
+        void aPlainTitleIsNotTaken() {
+            assertThat(parser.parseTitled("вынести мусор", MOSCOW)).isEmpty();
+        }
+
+        /** Одна дата без названия — не дело: названием оно не обзавелось. */
+        @Test
+        void aDateWithoutATitleIsNotTaken() {
+            assertThat(parser.parseTitled("14.08 18:30 цирк", MOSCOW)).isEmpty();
+        }
+
+        @Test
+        void theTitleKeepsItsOwnDigits() {
+            DueDateParser.Titled written =
+                    parser.parseTitled("оплатить счёт 2 за август 20.08", MOSCOW).orElseThrow();
+
+            assertThat(written.title()).isEqualTo("оплатить счёт 2 за август");
+        }
+    }
+
     @Nested
     class Slots {
 

@@ -90,8 +90,17 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         return false;
     }
 
+    /**
+     * {@code /new} без аргумента спрашивает название; с аргументом — принимает дело целиком, ровно
+     * как если бы его написали следующим сообщением.
+     */
     @Override
     public void handle(BotRequest request) {
+        Optional<String> written = request.commandArgument();
+        if (written.isPresent()) {
+            accept(request, written.get());
+            return;
+        }
         dialogs.put(request.telegramUserId(), new DialogState.AwaitingTaskTitle());
         sender.send(request.chatId(), Texts.ASK_TASK_TITLE);
     }
@@ -119,19 +128,37 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
     }
 
     private boolean acceptTitle(BotRequest request) {
-        String title = request.text().trim();
-        if (title.isBlank()) {
+        return accept(request, request.text());
+    }
+
+    /**
+     * Принять написанное: либо просто название, либо дело целиком — «сходить на ролики 14.08
+     * 18:30-20:00 цирк».
+     *
+     * <p>Разбор пробуется всегда и молча: не нашлось даты — значит это название, дальше как раньше.
+     */
+    private boolean accept(BotRequest request, String written) {
+        String text = written == null ? "" : written.trim();
+        if (text.isBlank()) {
             sender.send(request.chatId(), Texts.ASK_TASK_TITLE);
             return true;
         }
+
+        Member creator = request.requireMember();
+        ZoneId zone = families.family(creator).timezone();
+        Optional<DueDateParser.Titled> titled = dueDates.parseTitled(text, zone);
+
+        String title = titled.map(DueDateParser.Titled::title).orElse(text);
+        DueDateParser.Plan plan = titled.map(DueDateParser.Titled::plan).orElse(null);
+
         if (title.length() > Task.MAX_TITLE_LENGTH) {
             sender.send(request.chatId(), Texts.TASK_TITLE_TOO_LONG);
             return true;
         }
 
-        Member creator = request.requireMember();
         dialogs.put(
-                request.telegramUserId(), new DialogState.ChoosingAssignees(title, List.of()));
+                request.telegramUserId(),
+                new DialogState.ChoosingAssignees(title, List.of(), plan));
         sender.send(
                 request.chatId(),
                 Texts.ASK_ASSIGNEES,
@@ -155,7 +182,7 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
         Member creator = request.requireMember();
         dialogs.put(
                 request.telegramUserId(),
-                new DialogState.ChoosingAssignees(choosing.title(), chosen));
+                new DialogState.ChoosingAssignees(choosing.title(), chosen, choosing.plan()));
 
         // перерисовываем на месте, а не новым сообщением: выбор исполнителя теперь на каждом
         // деле, и сообщение на каждое нажатие превратило бы создание дела в ленту из пяти штук
@@ -191,6 +218,11 @@ public class NewTaskHandler implements CommandHandler, CallbackHandler, DialogHa
             return;
         }
 
+        // срок уже назван строкой — второй вопрос «когда?» подряд был бы лишним нажатием
+        if (choosing.plan() != null) {
+            askRepeat(request, choosing.title(), choosing.chosen(), choosing.plan());
+            return;
+        }
         askDue(request, choosing.title(), choosing.chosen());
     }
 

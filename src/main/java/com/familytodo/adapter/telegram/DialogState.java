@@ -23,8 +23,20 @@ public sealed interface DialogState {
      * <p>⚠️ Отметки всегда, даже когда исполнитель один. Прежде тап по имени выбирал одного и сразу
      * вёл дальше, а несколько выбирались отдельной кнопкой, — так экономилось нажатие на частом
      * случае, но до кнопки под именами с телефона не доходили ни разу.
+     *
+     * <p>{@code plan} не пуст, если дело написали одной строкой («сходить на ролики 14.08
+     * 18:30-20:00 цирк»). Тогда срок уже назван, и спрашивать его кнопками — второе «когда?» подряд.
      */
-    record ChoosingAssignees(String title, java.util.List<Long> chosen) implements DialogState {
+    record ChoosingAssignees(
+            String title,
+            java.util.List<Long> chosen,
+            com.familytodo.application.DueDateParser.Plan plan)
+            implements DialogState {
+
+        /** Обычный путь: название есть, срок ещё спросим. */
+        public ChoosingAssignees(String title, java.util.List<Long> chosen) {
+            this(title, chosen, null);
+        }
 
         /**
          * ⚠️ Список, а не множество. {@code Set.copyOf} порядок <b>не сохраняет</b>: у неизменяемых
