@@ -1,7 +1,7 @@
 package com.familytodo.adapter.telegram;
 
 import com.familytodo.adapter.telegram.view.HtmlEscaper;
-import com.familytodo.adapter.telegram.view.TaskListView;
+import com.familytodo.adapter.telegram.view.DigestView;
 import com.familytodo.application.port.MemberRepository;
 import com.familytodo.application.port.Notifier;
 import com.familytodo.domain.Member;
@@ -90,19 +90,14 @@ public class TelegramNotifier implements Notifier {
             int horizonDays) {
         Map<Long, Member> byId =
                 family.stream().collect(Collectors.toMap(Member::id, Function.identity()));
-        // тот же список, что и по команде: родителю — вся семья, ребёнку — только своё
-        TaskListView.Kind kind =
-                recipient.isParent() ? TaskListView.Kind.ALL : TaskListView.Kind.MINE;
 
-        TaskListView.Rendered rendered =
-                TaskListView.render(
-                        greeting(horizonDays),
-                        tasks,
-                        byId,
-                        kind,
-                        zone,
-                        clock.instant());
-        send(recipient, rendered.text());
+        // ⚠️ вёрстка своя, не список дел: у дайджеста нет кнопок, поэтому нумерация строк в нём —
+        // шум, а дни нужны заголовками. Плоский список повторял дату на каждой строке, и пять дел
+        // на 13.08 читались как пять разных дней
+        send(
+                recipient,
+                DigestView.render(
+                        greeting(horizonDays), tasks, recipient, byId, zone, clock.instant()));
     }
 
     /** Заголовок обязан совпадать с содержимым: «дела на сегодня» над недельным списком — неправда. */
