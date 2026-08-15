@@ -270,6 +270,15 @@ public class JdbcTaskRepository implements TaskRepository {
             sql.append(" and t.starts_at is null and t.due_at is null");
         }
 
+        // ⚠️ Прошедшее событие из открытых списков уходит — то же правило, что у дайджеста:
+        // сделать его уже нельзя. Условие только про дела с интервалом: у дела со сроком
+        // starts_at пуст, и просроченное «вынести мусор к 19:00» остаётся на месте.
+        // Конец интервала, а не начало: дело идёт с 18:30 до 20:00 и в 19:00 ещё длится.
+        if (query.eventsFrom() != null) {
+            sql.append(" and (t.starts_at is null or coalesce(t.ends_at, t.starts_at) >= ?)");
+            params.add(query.eventsFrom().toEpochMilli());
+        }
+
         // сначала со сроком по возрастанию, бессрочные в конце
         sql.append(" order by coalesce(t.starts_at, t.due_at, 9223372036854775807), t.id");
 

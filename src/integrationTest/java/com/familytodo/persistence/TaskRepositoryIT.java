@@ -278,6 +278,48 @@ class TaskRepositoryIT extends AbstractSqliteIT {
         assertThat(undated).extracting(Task::title).containsExactly("Без срока");
     }
 
+    /**
+     * Прошедшее событие из открытых списков уходит: сделать его уже нельзя. Проверяется на реальном
+     * SQL — правило живёт в запросе, и фейк, повторяющий его словами, ничего бы не доказал.
+     */
+    @Test
+    void aFinishedEventDropsOutButAnOverdueDeadlineStays() {
+        Task event = repository.save(dated(100L, "Ролики", "2026-08-20T16:00:00Z"));
+        event.schedule(
+                com.familytodo.domain.Actor.member(MOM, FAMILY_A, Role.PARENT),
+                Instant.parse("2026-08-06T15:30:00Z"),
+                Instant.parse("2026-08-06T17:00:00Z"),
+                "цирк");
+        repository.save(event);
+        repository.save(dated(101L, "Вынести мусор", "2026-08-06T16:00:00Z"));
+
+        List<Task> open =
+                repository.find(
+                        new TaskQuery(FAMILY_A, null, null, null, OPEN)
+                                .withoutPastEvents(Instant.parse("2026-08-07T00:00:00Z")));
+
+        assertThat(open).extracting(Task::title).containsExactly("Вынести мусор");
+    }
+
+    /** Граница по дню: событие, кончившееся сегодня утром, из списка не уходит. */
+    @Test
+    void anEventThatEndedEarlierTodayStays() {
+        Task event = repository.save(dated(100L, "Зарядка", "2026-08-20T16:00:00Z"));
+        event.schedule(
+                com.familytodo.domain.Actor.member(MOM, FAMILY_A, Role.PARENT),
+                Instant.parse("2026-08-07T04:00:00Z"),
+                Instant.parse("2026-08-07T04:30:00Z"),
+                null);
+        repository.save(event);
+
+        List<Task> open =
+                repository.find(
+                        new TaskQuery(FAMILY_A, null, null, null, OPEN)
+                                .withoutPastEvents(Instant.parse("2026-08-06T21:00:00Z")));
+
+        assertThat(open).extracting(Task::title).containsExactly("Зарядка");
+    }
+
     @Test
     void doesNotHandOutTheSameIdTwice() {
         assertThat(repository.nextId()).isNotEqualTo(repository.nextId());

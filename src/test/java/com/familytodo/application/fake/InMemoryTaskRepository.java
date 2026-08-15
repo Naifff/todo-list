@@ -192,6 +192,13 @@ public final class InMemoryTaskRepository implements TaskRepository {
         if (query.from() != null && (moment == null || moment.isBefore(query.from()))) {
             return false;
         }
+        // прошедшее событие уходит; дела со сроком это не касается — у них starts_at пуст
+        if (query.eventsFrom() != null && task.startsAt() != null) {
+            Instant over = task.endsAt() != null ? task.endsAt() : task.startsAt();
+            if (over.isBefore(query.eventsFrom())) {
+                return false;
+            }
+        }
         return query.to() == null || (moment != null && moment.isBefore(query.to()));
     }
 

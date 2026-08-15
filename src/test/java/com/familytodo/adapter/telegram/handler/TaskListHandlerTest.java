@@ -15,6 +15,7 @@ import com.familytodo.application.fake.InMemoryMemberRepository;
 import com.familytodo.application.fake.InMemoryTaskRepository;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Role;
+import com.familytodo.domain.Task;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -141,6 +142,75 @@ class TaskListHandlerTest {
             handler.handle(command(kid, "all"));
 
             assertThat(sender.texts).containsExactly(Texts.ALL_IS_FOR_PARENTS);
+        }
+    }
+
+    /**
+     * ⚠️ Прошедшее событие из открытых списков уходит — то же правило, что у дайджеста: сделать его
+     * уже нельзя. Нашлось живьём: «сходить на ролики 14.08 18:30–20:00» висело в {@code /all}
+     * открытым и <b>первым</b> — сортировка по моменту ставит прошедшее впереди всего будущего.
+     */
+    @Nested
+    class PastEvents {
+
+        @Test
+        void yesterdaysEventLeavesTheList() {
+            Task event = taskService.create(mom, kid.id(), "Ролики", null);
+            event.schedule(
+                    mom.asActor(),
+                    YESTERDAY,
+                    YESTERDAY.plus(java.time.Duration.ofHours(1)),
+                    "цирк");
+            tasks.save(event);
+            sender.clear();
+
+            handler.handle(command(mom, "all"));
+
+            assertThat(sender.texts.getFirst()).doesNotContain("Ролики");
+        }
+
+        /** Сегодняшнее остаётся весь день: граница по дню, а не по моменту. */
+        @Test
+        void todaysEventStaysEvenAfterItEnded() {
+            Task event = taskService.create(mom, kid.id(), "Зарядка", null);
+            event.schedule(
+                    mom.asActor(),
+                    Instant.parse("2026-08-07T04:00:00Z"),
+                    Instant.parse("2026-08-07T04:30:00Z"),
+                    "дом");
+            tasks.save(event);
+            sender.clear();
+
+            handler.handle(command(mom, "all"));
+
+            assertThat(sender.texts.getFirst()).contains("Зарядка");
+        }
+
+        /** ⚠️ Просроченное дело со сроком остаётся: его всё ещё можно сделать. */
+        @Test
+        void anOverdueDeadlineStays() {
+            taskService.create(mom, kid.id(), "Вынести мусор", YESTERDAY);
+            sender.clear();
+
+            handler.handle(command(mom, "all"));
+
+            assertThat(sender.texts.getFirst()).contains("Вынести мусор").contains("❗️");
+        }
+
+        @Test
+        void theSameHoldsForMine() {
+            Task event = taskService.create(mom, kid.id(), "Ролики", null);
+            event.schedule(
+                    mom.asActor(),
+                    YESTERDAY,
+                    YESTERDAY.plus(java.time.Duration.ofHours(1)),
+                    "цирк");
+            tasks.save(event);
+            sender.clear();
+
+            handler.handle(command(kid, "my"));
+
+            assertThat(sender.texts.getFirst()).doesNotContain("Ролики");
         }
     }
 

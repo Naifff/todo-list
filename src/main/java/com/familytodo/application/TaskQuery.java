@@ -25,7 +25,8 @@ public record TaskQuery(
         Set<TaskStatus> statuses,
         Instant from,
         Instant to,
-        boolean undatedOnly) {
+        boolean undatedOnly,
+        Instant eventsFrom) {
 
     /** Прежняя форма без горизонта: подавляющее большинство выборок не про диапазон дат. */
     public TaskQuery(
@@ -34,7 +35,47 @@ public record TaskQuery(
             Long assigneeId,
             Long creatorId,
             Set<TaskStatus> statuses) {
-        this(familyId, visibleToMemberId, assigneeId, creatorId, statuses, null, null, false);
+        this(familyId, visibleToMemberId, assigneeId, creatorId, statuses, null, null, false, null);
+    }
+
+    /** Прежняя форма с горизонтом: события отсекать не просили. */
+    public TaskQuery(
+            long familyId,
+            Long visibleToMemberId,
+            Long assigneeId,
+            Long creatorId,
+            Set<TaskStatus> statuses,
+            Instant from,
+            Instant to,
+            boolean undatedOnly) {
+        this(familyId, visibleToMemberId, assigneeId, creatorId, statuses, from, to, undatedOnly, null);
+    }
+
+    /**
+     * Нижняя граница для дел <b>с интервалом</b>: прошедшее событие из открытых списков уходит.
+     *
+     * <p>То же правило, что у дайджеста, и по той же причине: <b>прошедшее событие сделать уже
+     * нельзя</b>. Вчерашние ролики висели в {@code /all} открытыми, да ещё и первыми — сортировка
+     * по моменту ставит их впереди всего будущего, и прошедшее выглядело как ближайшее.
+     *
+     * <p>⚠️ Дел <b>со сроком</b> это не касается: «вынести мусор к 19:00» просроченное всё ещё можно
+     * сделать, и оно остаётся с восклицательным знаком. Решение «просроченное с ростом срока не
+     * становится менее важным» в силе — оно про сроки, а не про события.
+     *
+     * @param startOfToday начало сегодняшнего дня в зоне семьи; сегодняшние события остаются весь
+     *     день, как и в дайджесте
+     */
+    public TaskQuery withoutPastEvents(Instant startOfToday) {
+        return new TaskQuery(
+                familyId,
+                visibleToMemberId,
+                assigneeId,
+                creatorId,
+                statuses,
+                from,
+                to,
+                undatedOnly,
+                startOfToday);
     }
 
     private static final Set<TaskStatus> OPEN_ONLY = EnumSet.of(TaskStatus.OPEN);
@@ -71,7 +112,7 @@ public record TaskQuery(
     public TaskQuery withStatuses(Set<TaskStatus> newStatuses) {
         return new TaskQuery(
                 familyId, visibleToMemberId, assigneeId, creatorId, newStatuses, from, to,
-                undatedOnly);
+                undatedOnly, eventsFrom);
     }
 
     /**

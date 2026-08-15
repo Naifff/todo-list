@@ -7,6 +7,8 @@ import com.familytodo.application.TaskService;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
@@ -63,12 +65,28 @@ public class TaskListPresenter {
                 rendered.text(), TaskListView.keyboard(found, kind, rendered.shown()));
     }
 
+    /**
+     * ⚠️ Все три списка отсекают прошедшие события — то же правило, что у дайджеста: сделать их уже
+     * нельзя. Вчерашние ролики висели открытыми, и сортировка по моменту ставила их первыми, то есть
+     * прошедшее выглядело как ближайшее.
+     *
+     * <p>Просроченных дел <b>со сроком</b> это не касается: их всё ещё можно сделать, они остаются с
+     * восклицательным знаком.
+     */
     private TaskQuery query(Member viewer, TaskListView.Kind kind) {
-        return switch (kind) {
-            case MINE -> TaskQuery.assignedTo(viewer);
-            case REQUESTED -> TaskQuery.createdBy(viewer);
-            case ALL -> TaskQuery.visibleTo(viewer);
-        };
+        TaskQuery query =
+                switch (kind) {
+                    case MINE -> TaskQuery.assignedTo(viewer);
+                    case REQUESTED -> TaskQuery.createdBy(viewer);
+                    case ALL -> TaskQuery.visibleTo(viewer);
+                };
+        return query.withoutPastEvents(startOfToday(viewer));
+    }
+
+    /** Граница по дню, а не по моменту: сегодняшнее событие видно весь день, как и в дайджесте. */
+    private Instant startOfToday(Member viewer) {
+        ZoneId zone = families.family(viewer).timezone();
+        return LocalDate.ofInstant(clock.instant(), zone).atStartOfDay(zone).toInstant();
     }
 
     private static String header(TaskListView.Kind kind) {
