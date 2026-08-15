@@ -3,6 +3,7 @@ package com.familytodo.config;
 import com.familytodo.application.DueDateParser;
 import com.familytodo.application.FamilyService;
 import com.familytodo.application.InviteService;
+import com.familytodo.application.LessonParser;
 import com.familytodo.application.TaskService;
 import com.familytodo.application.port.FamilyRepository;
 import com.familytodo.application.port.InviteRepository;
@@ -36,6 +37,12 @@ public class ApplicationConfig {
     @Bean
     public DueDateParser dueDateParser(Clock clock) {
         return new DueDateParser(clock);
+    }
+
+    /** Разбору расписания часы не нужны: он про дни недели и время суток, а не про моменты. */
+    @Bean
+    public LessonParser lessonParser() {
+        return new LessonParser();
     }
 
     @Bean

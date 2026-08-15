@@ -44,7 +44,8 @@ class MigrationIT extends AbstractSqliteIT {
                         "idx_task_occurrence",
                         "idx_series_active",
                         "idx_series_assignee_member",
-                        "idx_shopping_family");
+                        "idx_shopping_family",
+                        "idx_lesson_member");
     }
 
     /** ⚠️ Цвет раздаётся миграцией всем, кто уже в семье: без него календарь рисовать нечем. */
@@ -96,7 +97,8 @@ class MigrationIT extends AbstractSqliteIT {
 
         assertThat(names)
                 .containsExactly(
-                        "family", "invite", "member", "shopping_item", "task", "task_series");
+                        "family", "invite", "lesson", "member", "shopping_item", "task",
+                        "task_series");
     }
 
     /**
