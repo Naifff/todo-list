@@ -146,15 +146,18 @@ class TaskListHandlerTest {
     }
 
     /**
-     * ⚠️ Прошедшее событие из открытых списков уходит — то же правило, что у дайджеста: сделать его
-     * уже нельзя. Нашлось живьём: «сходить на ролики 14.08 18:30–20:00» висело в {@code /all}
-     * открытым и <b>первым</b> — сортировка по моменту ставит прошедшее впереди всего будущего.
+     * ⚠️ Прошедшее событие уходит в <b>конец</b> списка и помечается — но остаётся в нём.
+     *
+     * <p>Жалоба была про порядок: «сходить на ролики 14.08 18:30–20:00» стояло в {@code /all}
+     * первым, потому что сортировка по моменту ставит прошедшее впереди всего будущего. Первым
+     * решением такие дела отсекли — и на телефоне тут же выяснилось, чем это стоило: перенести
+     * прошедшее событие на завтра стало нечем, к нему не осталось пути.
      */
     @Nested
     class PastEvents {
 
         @Test
-        void yesterdaysEventLeavesTheList() {
+        void yesterdaysEventStaysButGoesLast() {
             Task event = taskService.create(mom, kid.id(), "Ролики", null);
             event.schedule(
                     mom.asActor(),
@@ -164,9 +167,14 @@ class TaskListHandlerTest {
             tasks.save(event);
             sender.clear();
 
+            taskService.create(mom, kid.id(), "Вынести мусор", TOMORROW_EVENING);
+            sender.clear();
+
             handler.handle(command(mom, "all"));
 
-            assertThat(sender.texts.getFirst()).doesNotContain("Ролики");
+            String text = sender.texts.getFirst();
+            assertThat(text).contains("Ролики").contains("⌛");
+            assertThat(text.indexOf("Вынести мусор")).isLessThan(text.indexOf("Ролики"));
         }
 
         /** Сегодняшнее остаётся весь день: граница по дню, а не по моменту. */
@@ -210,7 +218,7 @@ class TaskListHandlerTest {
 
             handler.handle(command(kid, "my"));
 
-            assertThat(sender.texts.getFirst()).doesNotContain("Ролики");
+            assertThat(sender.texts.getFirst()).contains("Ролики").contains("⌛");
         }
     }
 

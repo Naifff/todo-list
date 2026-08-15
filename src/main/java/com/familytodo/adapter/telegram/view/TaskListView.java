@@ -169,6 +169,11 @@ public final class TaskListView {
         if (isOverdue(task, now)) {
             line.append("❗️");
         }
+        // ⚠️ у события своя пометка, а не восклицательный знак: «просрочено» значит «ещё можно
+        // сделать», а прошедшее событие сделать уже нельзя — его переносят или закрывают
+        if (isPastEvent(task, zone, now)) {
+            line.append("⌛");
+        }
         line.append(number).append(". ").append(HtmlEscaper.escape(task.title()));
 
         String who = who(task, byId, kind);
@@ -239,6 +244,18 @@ public final class TaskListView {
             return "завтра " + local.format(TIME);
         }
         return local.format(DATE) + " " + local.format(TIME);
+    }
+
+    /**
+     * Событие, которое уже прошло. Граница по дню, а не по моменту: сегодняшнее событие прошедшим не
+     * считается весь день — ровно та же граница, по которой такие дела уводятся в конец списка.
+     */
+    private static boolean isPastEvent(Task task, ZoneId zone, Instant now) {
+        if (task.startsAt() == null) {
+            return false;
+        }
+        Instant over = task.endsAt() != null ? task.endsAt() : task.startsAt();
+        return over.isBefore(LocalDate.ofInstant(now, zone).atStartOfDay(zone).toInstant());
     }
 
     private static boolean isOverdue(Task task, Instant now) {

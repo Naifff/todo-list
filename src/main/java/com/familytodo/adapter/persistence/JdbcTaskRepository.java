@@ -270,17 +270,19 @@ public class JdbcTaskRepository implements TaskRepository {
             sql.append(" and t.starts_at is null and t.due_at is null");
         }
 
-        // ⚠️ Прошедшее событие из открытых списков уходит — то же правило, что у дайджеста:
-        // сделать его уже нельзя. Условие только про дела с интервалом: у дела со сроком
-        // starts_at пуст, и просроченное «вынести мусор к 19:00» остаётся на месте.
-        // Конец интервала, а не начало: дело идёт с 18:30 до 20:00 и в 19:00 ещё длится.
+        // ⚠️ Прошедшее событие уходит в КОНЕЦ, а не из списка. Сортировка по моменту ставила его
+        // впереди всего будущего, и вчерашнее выглядело ближайшим; отсечь его целиком оказалось
+        // хуже — открыть и перенести стало нечем. Конец интервала, а не начало: дело идёт с 18:30
+        // до 20:00 и в 19:00 ещё длится. Дел со сроком условие не касается — у них starts_at пуст.
+        sql.append(" order by ");
         if (query.eventsFrom() != null) {
-            sql.append(" and (t.starts_at is null or coalesce(t.ends_at, t.starts_at) >= ?)");
+            sql.append(
+                    "case when t.starts_at is not null"
+                            + " and coalesce(t.ends_at, t.starts_at) < ? then 1 else 0 end, ");
             params.add(query.eventsFrom().toEpochMilli());
         }
-
         // сначала со сроком по возрастанию, бессрочные в конце
-        sql.append(" order by coalesce(t.starts_at, t.due_at, 9223372036854775807), t.id");
+        sql.append("coalesce(t.starts_at, t.due_at, 9223372036854775807), t.id");
 
         List<TaskRow> rows =
                 jdbc.sql(sql.toString()).params(params).query(TaskRowMapper.INSTANCE).list();

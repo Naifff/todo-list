@@ -53,8 +53,10 @@ public final class InMemoryTaskRepository implements TaskRepository {
                 found.add(task);
             }
         }
+        // тот же порядок, что в SQL: прошедшее событие в конце, дальше по моменту
         found.sort(
-                Comparator.<Task, Instant>comparing(
+                Comparator.<Task, Integer>comparing(task -> isPastEvent(task, query.eventsFrom()))
+                        .thenComparing(
                                 InMemoryTaskRepository::moment,
                                 Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparing(Task::id));
@@ -192,14 +194,16 @@ public final class InMemoryTaskRepository implements TaskRepository {
         if (query.from() != null && (moment == null || moment.isBefore(query.from()))) {
             return false;
         }
-        // прошедшее событие уходит; дела со сроком это не касается — у них starts_at пуст
-        if (query.eventsFrom() != null && task.startsAt() != null) {
-            Instant over = task.endsAt() != null ? task.endsAt() : task.startsAt();
-            if (over.isBefore(query.eventsFrom())) {
-                return false;
-            }
-        }
         return query.to() == null || (moment != null && moment.isBefore(query.to()));
+    }
+
+    /** Прошедшее событие — то, у которого кончился интервал. У дела со сроком интервала нет. */
+    private static int isPastEvent(Task task, Instant eventsFrom) {
+        if (eventsFrom == null || task.startsAt() == null) {
+            return 0;
+        }
+        Instant over = task.endsAt() != null ? task.endsAt() : task.startsAt();
+        return over.isBefore(eventsFrom) ? 1 : 0;
     }
 
     /** Момент дела — начало интервала, иначе срок. Совпадает с coalesce в запросе. */

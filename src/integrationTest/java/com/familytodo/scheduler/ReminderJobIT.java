@@ -106,6 +106,40 @@ class ReminderJobIT extends AbstractSqliteIT {
             assertThat(remindedAt(task)).isNull();
         }
 
+        /**
+         * ⚠️ О событии тоже напоминаем — и это исправление. У события заполнен {@code starts_at}, а
+         * {@code due_at} пуст, и прежнее условие {@code due_at is not null} отсекало его молча: «др
+         * Ралины» стоял в календаре и не напоминал о себе никак. Заметить это можно было только по
+         * тому, что уведомление не пришло.
+         */
+        @Test
+        void anEventRemindsAtItsStart() {
+            Task event = task("День рождения", null);
+            event.schedule(
+                    mom.asActor(),
+                    NOON.minus(Duration.ofMinutes(1)),
+                    NOON.plus(Duration.ofHours(3)),
+                    "дома");
+            tasks.save(event);
+
+            job.run();
+
+            assertThat(notifier.sent).containsExactly(event.id());
+            assertThat(remindedAt(event)).isNotNull();
+        }
+
+        /** Событие, до которого ещё далеко, не трогаем — как и дело со сроком. */
+        @Test
+        void aFutureEventIsNotTouched() {
+            Task event = task("День рождения", null);
+            event.schedule(mom.asActor(), NOON.plus(Duration.ofHours(2)), null, null);
+            tasks.save(event);
+
+            job.run();
+
+            assertThat(notifier.sent).isEmpty();
+        }
+
         @Test
         void tasksWithoutDueDateAreNeverSelected() {
             Task task = task("Разобрать шкаф", null);

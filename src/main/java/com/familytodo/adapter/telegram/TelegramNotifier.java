@@ -78,7 +78,19 @@ public class TelegramNotifier implements Notifier {
 
     @Override
     public void taskDue(Member recipient, Task task) {
-        send(recipient, "Срок подошёл: " + title(task));
+        // ⚠️ у события и у дела со сроком разные слова: «срок подошёл» про день рождения — неправда,
+        // никто не просил его сделать к этому часу, оно просто началось
+        send(
+                recipient,
+                task.isScheduled()
+                        ? "Началось: " + title(task) + place(task)
+                        : "Срок подошёл: " + title(task));
+    }
+
+    private static String place(Task task) {
+        return task.location() == null || task.location().isBlank()
+                ? ""
+                : "\n" + HtmlEscaper.escape(task.location());
     }
 
     @Override

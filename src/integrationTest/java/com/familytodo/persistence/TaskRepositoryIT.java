@@ -279,11 +279,11 @@ class TaskRepositoryIT extends AbstractSqliteIT {
     }
 
     /**
-     * Прошедшее событие из открытых списков уходит: сделать его уже нельзя. Проверяется на реальном
-     * SQL — правило живёт в запросе, и фейк, повторяющий его словами, ничего бы не доказал.
+     * Прошедшее событие уходит в конец выборки, но остаётся в ней: иначе его нельзя ни открыть, ни
+     * перенести. Проверяется на реальном SQL — порядок живёт в запросе.
      */
     @Test
-    void aFinishedEventDropsOutButAnOverdueDeadlineStays() {
+    void aFinishedEventGoesLastButStays() {
         Task event = repository.save(dated(100L, "Ролики", "2026-08-20T16:00:00Z"));
         event.schedule(
                 com.familytodo.domain.Actor.member(MOM, FAMILY_A, Role.PARENT),
@@ -296,9 +296,9 @@ class TaskRepositoryIT extends AbstractSqliteIT {
         List<Task> open =
                 repository.find(
                         new TaskQuery(FAMILY_A, null, null, null, OPEN)
-                                .withoutPastEvents(Instant.parse("2026-08-07T00:00:00Z")));
+                                .pastEventsLast(Instant.parse("2026-08-07T00:00:00Z")));
 
-        assertThat(open).extracting(Task::title).containsExactly("Вынести мусор");
+        assertThat(open).extracting(Task::title).containsExactly("Вынести мусор", "Ролики");
     }
 
     /** Граница по дню: событие, кончившееся сегодня утром, из списка не уходит. */
@@ -315,7 +315,7 @@ class TaskRepositoryIT extends AbstractSqliteIT {
         List<Task> open =
                 repository.find(
                         new TaskQuery(FAMILY_A, null, null, null, OPEN)
-                                .withoutPastEvents(Instant.parse("2026-08-06T21:00:00Z")));
+                                .pastEventsLast(Instant.parse("2026-08-06T21:00:00Z")));
 
         assertThat(open).extracting(Task::title).containsExactly("Зарядка");
     }

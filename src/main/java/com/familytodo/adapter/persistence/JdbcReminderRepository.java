@@ -17,16 +17,24 @@ public class JdbcReminderRepository implements ReminderRepository {
      * Отбирать по {@code due_at} в SQL значило бы выкинуть отложенное на утро дело раньше, чем это
      * утро наступит.
      */
+    /**
+     * ⚠️ Момент напоминания — {@code coalesce(starts_at, due_at)}, а не только срок.
+     *
+     * <p>До этого у события напоминания не было вовсе: у него заполнен {@code starts_at}, а {@code
+     * due_at} пуст, и условие {@code due_at is not null} отсекало его молча. «Др Ралины» в календаре
+     * стоял, а не напоминал о себе никак — и заметить это можно было только тем, что уведомление не
+     * пришло.
+     */
     private static final String FIND_DUE =
             """
-            select t.id, t.family_id, t.due_at, f.timezone
+            select t.id, t.family_id, coalesce(t.starts_at, t.due_at) as due_at, f.timezone
             from task t
             join family f on f.id = t.family_id
             where t.status = 'OPEN'
-              and t.due_at is not null
-              and t.due_at <= ?
+              and coalesce(t.starts_at, t.due_at) is not null
+              and coalesce(t.starts_at, t.due_at) <= ?
               and t.reminded_at is null
-            order by t.due_at
+            order by coalesce(t.starts_at, t.due_at)
             limit ?
             """;
 
