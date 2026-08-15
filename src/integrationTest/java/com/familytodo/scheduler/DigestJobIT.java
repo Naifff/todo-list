@@ -51,7 +51,20 @@ class DigestJobIT extends AbstractSqliteIT {
         members = new JdbcMemberRepository(jdbc, sequence);
         tasks = new JdbcTaskRepository(jdbc, sequence);
         notifier = new RecordingNotifier();
-        job = new DigestJob(familyRepository, members, tasks, notifier, clock);
+        job =
+                new DigestJob(
+                        familyRepository,
+                        members,
+                        tasks,
+                        new com.familytodo.application.SchoolService(
+                                new com.familytodo.adapter.persistence.JdbcLessonRepository(
+                                        jdbc, sequence),
+                                members,
+                                familyRepository,
+                                new com.familytodo.application.LessonParser(),
+                                clock),
+                        notifier,
+                        clock);
     }
 
     @Nested
@@ -654,8 +667,10 @@ class DigestJobIT extends AbstractSqliteIT {
         public void digest(
                 Member recipient,
                 List<Task> tasks,
+                List<com.familytodo.domain.Lesson> lessons,
                 List<Member> family,
                 ZoneId zone,
+                java.time.LocalDate from,
                 int horizonDays) {
             horizons.add(horizonDays);
             if (failing.contains(recipient.id())) {

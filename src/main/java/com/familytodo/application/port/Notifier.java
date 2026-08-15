@@ -43,7 +43,9 @@ public interface Notifier {
     void digest(
             Member recipient,
             List<Task> tasks,
+            List<com.familytodo.domain.Lesson> lessons,
             List<Member> family,
             ZoneId zone,
+            java.time.LocalDate from,
             int horizonDays);
 }

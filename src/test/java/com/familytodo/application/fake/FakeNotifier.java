@@ -63,8 +63,10 @@ public final class FakeNotifier implements Notifier {
     public void digest(
             Member recipient,
             List<Task> tasks,
+            List<com.familytodo.domain.Lesson> lessons,
             List<Member> family,
             java.time.ZoneId zone,
+            java.time.LocalDate from,
             int horizonDays) {
         sent.add(new Sent(Kind.DIGEST, recipient.id(), tasks.size(), null));
     }

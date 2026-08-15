@@ -39,6 +39,117 @@ class CalendarHtmlRendererTest {
     private final AtomicLong ids = new AtomicLong();
     private final Map<Long, Member> roster = roster();
 
+    /**
+     * Уроки на странице расписания.
+     *
+     * <p>⚠️ Урок не превращается в {@link com.familytodo.domain.Task}: у него нет ни исполнителя, ни
+     * статуса, и поддельное дело утекло бы туда, где делам место, — в списки. На странице общая
+     * только геометрия.
+     */
+    @Nested
+    class Lessons {
+
+        @Test
+        void aLessonTakesItsPlaceInTheGrid() {
+            String html =
+                    new String(
+                            CalendarHtmlRenderer.render(
+                                    List.of(),
+                                    List.of(),
+                                    List.of(lesson("Математика", MONDAY.getDayOfWeek(), 8, 30)),
+                                    roster,
+                                    MOSCOW,
+                                    MONDAY,
+                                    1,
+                                    MONDAY),
+                            java.nio.charset.StandardCharsets.UTF_8);
+
+            assertThat(html).contains("Математика").contains("lesson");
+        }
+
+        /** Отличать урок от дела нужно глазами: у своего класса своя заливка и пунктир. */
+        @Test
+        void aLessonIsMarkedOffFromTasks() {
+            String html =
+                    new String(
+                            CalendarHtmlRenderer.render(
+                                    List.of(scheduled("Тренировка", MONDAY, 18, 0, 19, 0)),
+                                    List.of(),
+                                    List.of(lesson("Математика", MONDAY.getDayOfWeek(), 8, 30)),
+                                    roster,
+                                    MOSCOW,
+                                    MONDAY,
+                                    1,
+                                    MONDAY),
+                            java.nio.charset.StandardCharsets.UTF_8);
+
+            assertThat(html).contains("block lesson").contains(".block.lesson");
+        }
+
+        /** Урок другого дня недели в окно не попадает: расписание — правило, а не список дат. */
+        @Test
+        void aLessonOfAnotherWeekdayStaysOut() {
+            String html =
+                    new String(
+                            CalendarHtmlRenderer.render(
+                                    List.of(),
+                                    List.of(),
+                                    List.of(
+                                            lesson(
+                                                    "Математика",
+                                                    MONDAY.plusDays(1).getDayOfWeek(),
+                                                    8,
+                                                    30)),
+                                    roster,
+                                    MOSCOW,
+                                    MONDAY,
+                                    1,
+                                    MONDAY),
+                            java.nio.charset.StandardCharsets.UTF_8);
+
+            assertThat(html).doesNotContain("Математика");
+        }
+
+        /** ⚠️ Предмет — пользовательский текст: в документе неэкранированный не ломает, а исполняется. */
+        @Test
+        void aSubjectWithMarkupIsEscaped() {
+            String html =
+                    new String(
+                            CalendarHtmlRenderer.render(
+                                    List.of(),
+                                    List.of(),
+                                    List.of(
+                                            lesson(
+                                                    "<script>alert(1)</script>",
+                                                    MONDAY.getDayOfWeek(),
+                                                    8,
+                                                    30)),
+                                    roster,
+                                    MOSCOW,
+                                    MONDAY,
+                                    1,
+                                    MONDAY),
+                            java.nio.charset.StandardCharsets.UTF_8);
+
+            assertThat(html).doesNotContain("<script>alert").contains("&lt;script&gt;");
+        }
+
+        private com.familytodo.domain.Lesson lesson(
+                String subject, java.time.DayOfWeek day, int hour, int minute) {
+            return com.familytodo.domain.Lesson.create(
+                    ids.incrementAndGet(),
+                    1L,
+                    11L,
+                    day,
+                    java.time.LocalTime.of(hour, minute),
+                    java.time.LocalTime.of(hour, minute).plusMinutes(45),
+                    subject,
+                    MONDAY.minusDays(30),
+                    null,
+                    Instant.EPOCH);
+        }
+    }
+
     @Nested
     class SelfContained {
 
@@ -86,6 +197,7 @@ class CalendarHtmlRendererTest {
             byte[] bytes =
                     CalendarHtmlRenderer.render(
                             List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)),
+                            List.of(),
                             List.of(),
                             roster,
                             MOSCOW,
@@ -146,7 +258,7 @@ class CalendarHtmlRendererTest {
             byte[] bytes =
                     CalendarHtmlRenderer.render(
                             List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)),
-                            List.of(),
+                            List.of(), List.of(),
                             tricky,
                             MOSCOW,
                             MONDAY,
@@ -697,7 +809,8 @@ class CalendarHtmlRendererTest {
                                     CalendarHtmlRenderer.render(
                                             List.of(scheduled("Школа", MONDAY, 8, 0, 8, 40)),
                                             List.of(),
-                                            Map.of(),
+                                            List.of(),
+                Map.of(),
                                             MOSCOW,
                                             MONDAY,
                                             1,
@@ -721,7 +834,7 @@ class CalendarHtmlRendererTest {
     private String render(
             List<Task> dated, List<Task> undated, LocalDate from, int days, LocalDate today) {
         return new String(
-                CalendarHtmlRenderer.render(dated, undated, roster, MOSCOW, from, days, today),
+                CalendarHtmlRenderer.render(dated, undated, List.of(), roster, MOSCOW, from, days, today),
                 StandardCharsets.UTF_8);
     }
 
@@ -732,7 +845,7 @@ class CalendarHtmlRendererTest {
     private String renderList(
             List<Task> dated, List<Task> undated, LocalDate from, int days, LocalDate today) {
         return new String(
-                CalendarHtmlRenderer.renderList(dated, undated, roster, MOSCOW, from, days, today),
+                CalendarHtmlRenderer.renderList(dated, undated, List.of(), roster, MOSCOW, from, days, today),
                 StandardCharsets.UTF_8);
     }
 

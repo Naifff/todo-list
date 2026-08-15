@@ -40,11 +40,14 @@ class AgendaHandlerTest {
     private final InMemoryFamilyRepository families = new InMemoryFamilyRepository();
     private final InMemoryMemberRepository members = new InMemoryMemberRepository();
     private final InMemoryTaskRepository repository = new InMemoryTaskRepository();
+    private final com.familytodo.application.fake.InMemoryLessonRepository lessons =
+            new com.familytodo.application.fake.InMemoryLessonRepository();
     private final FakeNotifier notifier = new FakeNotifier();
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
     private final RecordingSender sender = new RecordingSender();
 
     private TaskService tasks;
+    private com.familytodo.application.SchoolService school;
     private AgendaHandler handler;
     private Member mom;
     private Member kid;
@@ -54,7 +57,14 @@ class AgendaHandlerTest {
         FamilyService familyService =
                 new FamilyService(families, members, repository, notifier, clock);
         tasks = new TaskService(repository, members, notifier, clock);
-        handler = new AgendaHandler(tasks, familyService, sender, clock);
+        school =
+                new com.familytodo.application.SchoolService(
+                        lessons,
+                        members,
+                        families,
+                        new com.familytodo.application.LessonParser(),
+                        clock);
+        handler = new AgendaHandler(tasks, familyService, school, sender, clock);
 
         mom = familyService.createFamily(100000001L, 100000001L, "Мама", "Румянцевы", MOSCOW);
         kid =

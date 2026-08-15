@@ -2,6 +2,7 @@ package com.familytodo.adapter.telegram.render;
 
 import com.familytodo.adapter.telegram.view.HtmlEscaper;
 import com.familytodo.domain.Assignment;
+import com.familytodo.domain.Lesson;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.MemberColor;
 import com.familytodo.domain.Task;
@@ -72,6 +73,7 @@ public final class CalendarHtmlRenderer {
     public static byte[] render(
             List<Task> dated,
             List<Task> undated,
+            List<Lesson> lessons,
             Map<Long, Member> byId,
             ZoneId zone,
             LocalDate from,
@@ -82,9 +84,9 @@ public final class CalendarHtmlRenderer {
         List<LocalDate> columns = columns(from, days);
 
         if (days > MAX_DAYS_ON_AXIS) {
-            appendMonth(html, dated, byId, zone, from, days, today);
+            appendMonth(html, dated, lessons, byId, zone, from, days, today);
         } else {
-            appendTimeGrid(html, dated, byId, zone, columns);
+            appendTimeGrid(html, dated, lessons, byId, zone, columns);
         }
 
         return close(html, undated, byId);
@@ -99,6 +101,7 @@ public final class CalendarHtmlRenderer {
     public static byte[] renderList(
             List<Task> dated,
             List<Task> undated,
+            List<Lesson> lessons,
             Map<Long, Member> byId,
             ZoneId zone,
             LocalDate from,
@@ -107,7 +110,7 @@ public final class CalendarHtmlRenderer {
 
         StringBuilder html = open(from, days);
         List<LocalDate> columns = columns(from, days);
-        Map<LocalDate, List<Entry>> byDay = group(dated, zone, columns);
+        Map<LocalDate, List<Entry>> byDay = group(dated, lessons, zone, columns);
 
         for (LocalDate day : columns) {
             html.append("<section class=\"day\">\n<h2>")
@@ -121,22 +124,21 @@ public final class CalendarHtmlRenderer {
                 continue;
             }
             for (Entry entry : entries) {
-                Task task = entry.task();
                 // ⚠️ Цвет исполнителя здесь не подставлялся никогда: CSS под него написан
                 // (border-left: var(--own, ...)), а значение не приезжало, и полоска у всех
                 // дел была одного цвета — цвета запасного варианта. Найдено взглядом на
                 // страницу, тестом такое не ловится.
                 html.append("<div class=\"loose ")
-                        .append(statusClass(task.status()))
+                        .append(cssClass(entry))
                         .append("\" style=\"--own:")
-                        .append(colorOf(byId, task))
-                        .append(fillOf(byId, task))
+                        .append(colorOf(byId, entry))
+                        .append(fillOf(byId, entry))
                         .append("\">\n<div class=\"time\">")
                         .append(entry.when())
                         .append("</div>\n<div class=\"title\">")
-                        .append(escape(task.title()))
+                        .append(escape(entry.title()))
                         .append("</div>\n");
-                appendDetails(html, task, byId);
+                appendDetails(html, entry, byId);
                 html.append("</div>\n");
             }
             html.append("</section>\n");
@@ -197,11 +199,12 @@ public final class CalendarHtmlRenderer {
     private static void appendTimeGrid(
             StringBuilder html,
             List<Task> tasks,
+            List<Lesson> lessons,
             Map<Long, Member> byId,
             ZoneId zone,
             List<LocalDate> columns) {
 
-        Map<LocalDate, List<Entry>> byDay = group(tasks, zone, columns);
+        Map<LocalDate, List<Entry>> byDay = group(tasks, lessons, zone, columns);
 
         // ⚠️ границы оси считаются теми же величинами, которыми потом позиционируются блоки.
         // Разные правила для оси и для блока однажды стоили картинке ночного дела целиком
@@ -303,9 +306,9 @@ public final class CalendarHtmlRenderer {
             double width = 100.0 / placed.lanes();
             double left = width * placed.lane();
 
-            Task task = placed.value().task();
+            Entry entry = placed.value();
             html.append("<div class=\"block ")
-                    .append(statusClass(task.status()))
+                    .append(cssClass(entry))
                     // в атрибут идут только числа, посчитанные нами самими
                     .append("\" style=\"")
                     // ⚠️ Locale.ROOT обязателен: у формата по умолчанию берётся локаль машины, и
@@ -318,17 +321,17 @@ public final class CalendarHtmlRenderer {
                                     height,
                                     left,
                                     width,
-                                    colorOf(byId, task),
-                                    fillOf(byId, task)))
+                                    colorOf(byId, entry),
+                                    fillOf(byId, entry)))
                     .append("\">\n")
                     // время и название одной строкой: у получасового дела на телефоне высоты
                     // хватает строки на две, и каждая лишняя — это шанс не поместиться
                     .append("<div class=\"title\"><span class=\"time\">")
-                    .append(placed.value().when())
+                    .append(entry.when())
                     .append("</span> ")
-                    .append(escape(task.title()))
+                    .append(escape(entry.title()))
                     .append("</div>\n");
-            appendCompactDetails(html, task, byId);
+            appendCompactDetails(html, entry, byId);
             html.append("</div>\n");
         }
     }
@@ -338,6 +341,7 @@ public final class CalendarHtmlRenderer {
     private static void appendMonth(
             StringBuilder html,
             List<Task> tasks,
+            List<Lesson> lessons,
             Map<Long, Member> byId,
             ZoneId zone,
             LocalDate from,
@@ -353,7 +357,7 @@ public final class CalendarHtmlRenderer {
         for (int i = 0; i < weeks * 7; i++) {
             cells.add(start.plusDays(i));
         }
-        Map<LocalDate, List<Entry>> byDay = group(tasks, zone, cells);
+        Map<LocalDate, List<Entry>> byDay = group(tasks, lessons, zone, cells);
 
         html.append("<div class=\"scroll\">\n<div class=\"month\">\n");
         for (DayOfWeek weekday : DayOfWeek.values()) {
@@ -372,17 +376,16 @@ public final class CalendarHtmlRenderer {
                     .append("\">\n");
             html.append("<div class=\"date\">").append(day.getDayOfMonth()).append("</div>\n");
             for (Entry entry : byDay.getOrDefault(day, List.of())) {
-                Task task = entry.task();
                 html.append("<div class=\"chip ")
-                        .append(statusClass(task.status()))
+                        .append(cssClass(entry))
                         .append("\" style=\"--own:")
-                        .append(colorOf(byId, task))
-                        .append(fillOf(byId, task))
+                        .append(colorOf(byId, entry))
+                        .append(fillOf(byId, entry))
                         .append("\"><span class=\"at\">")
                         .append(entry.startLabel())
                         .append("</span> ")
-                        .append(statusMark(task.status()))
-                        .append(escape(task.title()))
+                        .append(entry.isLesson() ? "" : statusMark(entry.task().status()))
+                        .append(escape(entry.title()))
                         .append("</div>\n");
             }
             html.append("</div>\n");
@@ -397,7 +400,16 @@ public final class CalendarHtmlRenderer {
      * высоту приходится строки три, и каждая отдельная строка — это ещё один шанс не поместиться.
      */
     private static void appendCompactDetails(
-            StringBuilder html, Task task, Map<Long, Member> byId) {
+            StringBuilder html, Entry entry, Map<Long, Member> byId) {
+        // у урока подробностей нет: место — школа, статуса не бывает. Остаётся чей он, и это
+        // главное в семейном календаре: по колонке видно, кто в это время занят
+        if (entry.isLesson()) {
+            html.append("<div class=\"who\">")
+                    .append(name(byId, entry.lesson().memberId()))
+                    .append("</div>\n");
+            return;
+        }
+        Task task = entry.task();
         StringBuilder meta = new StringBuilder();
         if (task.location() != null && !task.location().isBlank()) {
             meta.append(escape(task.location())).append(" · ");
@@ -412,7 +424,14 @@ public final class CalendarHtmlRenderer {
         appendRefusals(html, task, byId);
     }
 
-    private static void appendDetails(StringBuilder html, Task task, Map<Long, Member> byId) {
+    private static void appendDetails(StringBuilder html, Entry entry, Map<Long, Member> byId) {
+        if (entry.isLesson()) {
+            html.append("<div class=\"who\">")
+                    .append(name(byId, entry.lesson().memberId()))
+                    .append("</div>\n");
+            return;
+        }
+        Task task = entry.task();
         if (task.location() != null && !task.location().isBlank()) {
             html.append("<div class=\"where\">").append(escape(task.location())).append("</div>\n");
         }
@@ -475,7 +494,9 @@ public final class CalendarHtmlRenderer {
                     .append("<div class=\"title\">")
                     .append(escape(task.title()))
                     .append("</div>\n");
-            appendCompactDetails(html, task, byId);
+            // дело без даты на оси стоять не может, поэтому и куска суток у него нет:
+            // заворачиваем в Entry только ради общих подробностей
+            appendCompactDetails(html, new Entry(task, null, null, null, true), byId);
             html.append("</div>\n");
         }
         html.append("</section>\n");
@@ -487,11 +508,30 @@ public final class CalendarHtmlRenderer {
      * было.
      */
     private static Map<LocalDate, List<Entry>> group(
-            List<Task> tasks, ZoneId zone, List<LocalDate> columns) {
+            List<Task> tasks, List<Lesson> lessons, ZoneId zone, List<LocalDate> columns) {
 
         Map<LocalDate, List<Entry>> byDay = new LinkedHashMap<>();
         for (LocalDate day : columns) {
             byDay.put(day, new ArrayList<>());
+        }
+
+        // ⚠️ Уроки раскладываются здесь и только здесь: строк на конкретный день у них нет и не
+        // будет — расписание это правило, и день получается наложением. Дальше по коду урок и дело
+        // неразличимы, поэтому и сетка, и месяц, и список получают их одинаково.
+        for (Lesson lesson : lessons) {
+            for (LocalDate day : columns) {
+                if (!lesson.occursOn(day)) {
+                    continue;
+                }
+                byDay.get(day)
+                        .add(
+                                new Entry(
+                                        null,
+                                        lesson,
+                                        LocalDateTime.of(day, lesson.startsAt()),
+                                        LocalDateTime.of(day, lesson.endsAt()),
+                                        false));
+            }
         }
 
         for (Task task : tasks) {
@@ -521,7 +561,7 @@ public final class CalendarHtmlRenderer {
                     // дело кончается ровно в полночь: следующему дню оно не принадлежит
                     continue;
                 }
-                bucket.add(new Entry(task, pieceFrom, pieceTo, deadlineOnly));
+                bucket.add(new Entry(task, null, pieceFrom, pieceTo, deadlineOnly));
             }
         }
 
@@ -560,6 +600,22 @@ public final class CalendarHtmlRenderer {
      *
      * <p>Исполнителя могли исключить из семьи: тогда берём цвет по умолчанию, а не падаем.
      */
+    /** Урок помечается своим классом: статуса у него нет, а отличать от дела глазами нужно. */
+    private static String cssClass(Entry entry) {
+        return entry.isLesson() ? "lesson" : statusClass(entry.task().status());
+    }
+
+    private static String colorOf(Map<Long, Member> byId, Entry entry) {
+        return entry.isLesson()
+                ? colorOf(byId, entry.lesson().memberId())
+                : colorOf(byId, entry.task());
+    }
+
+    /** У урока хозяин один — делить заливку не между кем. */
+    private static String fillOf(Map<Long, Member> byId, Entry entry) {
+        return entry.isLesson() ? "" : fillOf(byId, entry.task());
+    }
+
     private static String colorOf(Map<Long, Member> byId, Task task) {
         return colorOf(byId, task.assignments().getFirst().memberId());
     }
@@ -808,12 +864,40 @@ public final class CalendarHtmlRenderer {
                  font-size: 13px;
                }
                .loose.done, .loose.declined { border-left-color: var(--muted); opacity: .7; }
+               /* Урок отличается от дела заливкой, а не цветом: цвет занят — он отвечает, чей это
+                  урок. Полупрозрачная заливка того же цвета плюс пунктирная рамка читаются как
+                  «здесь занято, но делать нечего»; сплошная не давала бы отличить школу от
+                  просьбы, а серая потеряла бы ребёнка. */
+               .block.lesson, .chip.lesson {
+                 background: color-mix(in srgb, var(--own, var(--accent)) 26%, transparent);
+                 color: var(--fg);
+                 border: 1px dashed var(--own, var(--accent));
+               }
+               .loose.lesson {
+                 border-left-style: dashed;
+                 background: color-mix(in srgb, var(--own, var(--accent)) 12%, var(--slot));
+               }
                </style>
                """;
     }
 
-    /** Кусок дела в пределах одних суток. */
-    private record Entry(Task task, LocalDateTime from, LocalDateTime to, boolean deadlineOnly) {
+    /**
+     * Кусок дела — или урок — в пределах одних суток.
+     *
+     * <p>⚠️ Ровно одно из двух полей заполнено. Урок <b>не превращается в {@link Task}</b>: у него
+     * нет ни исполнителя, ни статуса, и поддельное дело неминуемо утекло бы туда, где делам место, —
+     * в списки. Здесь же общая только геометрия: что во сколько занимает время.
+     */
+    private record Entry(
+            Task task, Lesson lesson, LocalDateTime from, LocalDateTime to, boolean deadlineOnly) {
+
+        boolean isLesson() {
+            return lesson != null;
+        }
+
+        String title() {
+            return isLesson() ? lesson.subject() : task.title();
+        }
 
         int startSecond() {
             return from.toLocalTime().toSecondOfDay();

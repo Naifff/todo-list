@@ -1,5 +1,6 @@
 package com.familytodo.adapter.telegram.view;
 
+import com.familytodo.domain.Lesson;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
 import java.time.Instant;
@@ -39,9 +40,12 @@ public final class DigestView {
     public static String render(
             String header,
             List<Task> tasks,
+            List<Lesson> lessons,
             Member recipient,
             Map<Long, Member> byId,
             ZoneId zone,
+            LocalDate from,
+            int horizonDays,
             Instant now) {
 
         StringBuilder out = new StringBuilder("<b>").append(header).append("</b>\n");
@@ -49,12 +53,13 @@ public final class DigestView {
         LocalDate today = LocalDate.ofInstant(now, zone);
 
         int shown = 0;
-        for (Map.Entry<LocalDate, List<Task>> day : byDay(tasks, zone).entrySet()) {
+        for (Map.Entry<LocalDate, List<Item>> day :
+                byDay(tasks, lessons, zone, from, horizonDays).entrySet()) {
             StringBuilder group = new StringBuilder("\n<b>").append(heading(day.getKey(), today));
             group.append("</b>\n");
 
-            for (Task task : day.getValue()) {
-                group.append(line(task, recipient, byId, zone, now)).append('\n');
+            for (Item item : day.getValue()) {
+                group.append(line(item, recipient, byId, zone, now)).append('\n');
             }
             if (out.length() + group.length() > budget) {
                 break;
@@ -63,10 +68,28 @@ public final class DigestView {
             shown += day.getValue().size();
         }
 
-        if (shown < tasks.size()) {
-            out.append("\n…и ещё ").append(tasks.size() - shown);
-        }
         return out.toString().stripTrailing();
+    }
+
+    /**
+     * Строка дайджеста: дело или урок.
+     *
+     * <p>⚠️ Урок не превращается в {@link Task}: у него нет ни исполнителя, ни статуса. Общее здесь
+     * только «когда» — по нему всё и выстраивается.
+     */
+    private record Item(Task task, Lesson lesson, LocalDate day, ZoneId zone) {
+
+        boolean isLesson() {
+            return lesson != null;
+        }
+
+        /** Момент, по которому строка встаёт в свой день. У дела без срока его нет. */
+        Instant moment() {
+            if (isLesson()) {
+                return lesson.startOf(day, zone);
+            }
+            return task.isScheduled() ? task.startsAt() : task.dueAt();
+        }
     }
 
     /**
@@ -74,12 +97,46 @@ public final class DigestView {
      * Дела без срока идут последними — {@code null} как ключ, отсюда {@link LinkedHashMap}, а не
      * сортировка ключей.
      */
-    private static Map<LocalDate, List<Task>> byDay(List<Task> tasks, ZoneId zone) {
-        Map<LocalDate, List<Task>> byDay = new LinkedHashMap<>();
+    private static Map<LocalDate, List<Item>> byDay(
+            List<Task> tasks, List<Lesson> lessons, ZoneId zone, LocalDate from, int horizonDays) {
+
+        Map<LocalDate, List<Item>> byDay = new LinkedHashMap<>();
         for (Task task : tasks) {
-            byDay.computeIfAbsent(day(task, zone), key -> new java.util.ArrayList<>()).add(task);
+            LocalDate day = day(task, zone);
+            byDay.computeIfAbsent(day, key -> new java.util.ArrayList<>())
+                    .add(new Item(task, null, day, zone));
         }
-        return byDay;
+
+        // ⚠️ уроки раскладываются по дням окна: строк на конкретный день у расписания нет, оно
+        // правило. Окно — то же, что у дел, иначе в недельном дайджесте школа кончалась бы раньше
+        for (int i = 0; i < horizonDays; i++) {
+            LocalDate day = from.plusDays(i);
+            for (Lesson lesson : lessons) {
+                if (lesson.occursOn(day)) {
+                    byDay.computeIfAbsent(day, key -> new java.util.ArrayList<>())
+                            .add(new Item(null, lesson, day, zone));
+                }
+            }
+        }
+
+        // ⚠️ порядок внутри дня — по моменту, и считается он после слияния: иначе уроки встали бы
+        // блоком, а человек читает утро подряд — «в 07:30 портфель, в 08:30 математика»
+        byDay.values()
+                .forEach(
+                        items ->
+                                items.sort(
+                                        java.util.Comparator.comparing(
+                                                Item::moment,
+                                                java.util.Comparator.nullsLast(
+                                                        java.util.Comparator.naturalOrder()))));
+
+        // дни идут по возрастанию, «без срока» последним: у него ключа-даты нет вовсе
+        List<LocalDate> order = new java.util.ArrayList<>(byDay.keySet());
+        order.sort(java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()));
+
+        Map<LocalDate, List<Item>> sorted = new LinkedHashMap<>();
+        order.forEach(day -> sorted.put(day, byDay.get(day)));
+        return sorted;
     }
 
     private static LocalDate day(Task task, ZoneId zone) {
@@ -110,8 +167,12 @@ public final class DigestView {
     }
 
     private static String line(
-            Task task, Member recipient, Map<Long, Member> byId, ZoneId zone, Instant now) {
+            Item item, Member recipient, Map<Long, Member> byId, ZoneId zone, Instant now) {
 
+        if (item.isLesson()) {
+            return lessonLine(item, recipient, byId, zone);
+        }
+        Task task = item.task();
         StringBuilder line = new StringBuilder("• ");
         if (task.dueAt() != null && task.dueAt().isBefore(now)) {
             line.append("❗️");
@@ -128,6 +189,29 @@ public final class DigestView {
         // автор называется, только если это кто-то другой: «от Мама» в списке самой мамы — шум
         if (task.creatorId() != recipient.id()) {
             line.append(" · от ").append(AssigneeNames.of(byId, task.creatorId()));
+        }
+        return line.toString();
+    }
+
+    /**
+     * Урок: время, предмет и — если получатель не сам школьник — чей он.
+     *
+     * <p>Родителю имя обязательно: своих уроков у него нет, а «математика в 08:30» без имени в семье
+     * с двумя школьниками не отвечает ни на что.
+     */
+    private static String lessonLine(
+            Item item, Member recipient, Map<Long, Member> byId, ZoneId zone) {
+
+        Lesson lesson = item.lesson();
+        StringBuilder line =
+                new StringBuilder("• 🎒 ")
+                        .append(HtmlEscaper.escape(lesson.subject()))
+                        .append(" · ")
+                        .append(lesson.startsAt().format(TIME))
+                        .append('–')
+                        .append(lesson.endsAt().format(TIME));
+        if (lesson.memberId() != recipient.id()) {
+            line.append(" · ").append(AssigneeNames.of(byId, lesson.memberId()));
         }
         return line.toString();
     }

@@ -27,6 +27,7 @@ class DigestViewTest {
     private static final ZoneId MOSCOW = ZoneId.of("Europe/Moscow");
     /** Четверг, 13 августа 2026, 08:00 по Москве. */
     private static final Instant NOW = Instant.parse("2026-08-13T05:00:00Z");
+    private static final LocalDate TODAY = LocalDate.of(2026, 8, 13);
 
     private static final long FAMILY = 1L;
     private final AtomicLong ids = new AtomicLong();
@@ -48,9 +49,12 @@ class DigestViewTest {
                             List.of(
                                     due(mom, "Вынести мусор", LocalDate.of(2026, 8, 13), LocalTime.of(19, 0)),
                                     due(mom, "Забрать посылку", LocalDate.of(2026, 8, 13), LocalTime.of(20, 0))),
+                            List.of(),
                             mom,
                             byId,
                             MOSCOW,
+                            TODAY,
+                            1,
                             NOW);
 
             assertThat(text).contains("Вынести мусор").contains("Забрать посылку");
@@ -67,9 +71,12 @@ class DigestViewTest {
                             List.of(
                                     due(mom, "Сегодняшнее", LocalDate.of(2026, 8, 13), LocalTime.of(19, 0)),
                                     due(mom, "Завтрашнее", LocalDate.of(2026, 8, 14), LocalTime.of(19, 0))),
+                            List.of(),
                             mom,
                             byId,
                             MOSCOW,
+                            TODAY,
+                            1,
                             NOW);
 
             assertThat(text).contains("Сегодня").contains("Завтра");
@@ -82,9 +89,12 @@ class DigestViewTest {
                     DigestView.render(
                             "Дела на неделю",
                             List.of(due(mom, "Тренировка", LocalDate.of(2026, 8, 15), LocalTime.of(19, 0))),
+                            List.of(),
                             mom,
                             byId,
                             MOSCOW,
+                            TODAY,
+                            1,
                             NOW);
 
             assertThat(text).contains("Суббота").contains("15.08");
@@ -96,9 +106,12 @@ class DigestViewTest {
                     DigestView.render(
                             "Дела на сегодня",
                             List.of(undated(mom, "Разобрать шкаф")),
+                            List.of(),
                             mom,
                             byId,
                             MOSCOW,
+                            TODAY,
+                            1,
                             NOW);
 
             assertThat(text).contains("Без срока").contains("Разобрать шкаф");
@@ -115,9 +128,12 @@ class DigestViewTest {
                     DigestView.render(
                             "Дела на сегодня",
                             List.of(due(mom, "Вынести мусор", LocalDate.of(2026, 8, 13), LocalTime.of(19, 0))),
+                            List.of(),
                             mom,
                             byId,
                             MOSCOW,
+                            TODAY,
+                            1,
                             NOW);
 
             assertThat(text).doesNotContain("Мама");
@@ -129,9 +145,12 @@ class DigestViewTest {
                     DigestView.render(
                             "Дела на сегодня",
                             List.of(due(kid, "Купить корм коту", LocalDate.of(2026, 8, 13), LocalTime.of(19, 0))),
+                            List.of(),
                             mom,
                             byId,
                             MOSCOW,
+                            TODAY,
+                            1,
                             NOW);
 
             assertThat(text).contains("от Петя");
@@ -144,13 +163,150 @@ class DigestViewTest {
                     DigestView.render(
                             "Дела на сегодня",
                             List.of(due(mom, "<b>мусор</b> & хлеб", LocalDate.of(2026, 8, 13), LocalTime.of(19, 0))),
+                            List.of(),
                             mom,
                             byId,
                             MOSCOW,
+                            TODAY,
+                            1,
                             NOW);
 
             assertThat(text).contains("&lt;b&gt;мусор&lt;/b&gt; &amp; хлеб").doesNotContain("<b>мусор");
         }
+    }
+
+    /**
+     * Уроки в дайджесте — строками вперемешку с делами, а не блоком: человек читает утро подряд,
+     * «в 07:30 портфель, в 08:30 математика».
+     */
+    @org.junit.jupiter.api.Nested
+    class Lessons {
+
+        @org.junit.jupiter.api.Test
+        void aLessonBecomesALineOrderedByItsTime() {
+            String text =
+                    DigestView.render(
+                            "Дела на сегодня",
+                            List.of(due(mom, "Собрать портфель", TODAY, LocalTime.of(7, 30))),
+                            List.of(lesson(kid, "Математика", LocalTime.of(8, 30))),
+                            kid,
+                            byId,
+                            MOSCOW,
+                            TODAY,
+                            1,
+                            NOW);
+
+            assertThat(text).contains("Математика").contains("08:30–09:15");
+            assertThat(text.indexOf("портфель")).isLessThan(text.indexOf("Математика"));
+        }
+
+        /** Родителю имя обязательно: своих уроков у него нет, а школьников в семье бывает двое. */
+        @org.junit.jupiter.api.Test
+        void aParentSeesWhoseLessonItIs() {
+            String text =
+                    DigestView.render(
+                            "Дела на сегодня",
+                            List.of(),
+                            List.of(lesson(kid, "Математика", LocalTime.of(8, 30))),
+                            mom,
+                            byId,
+                            MOSCOW,
+                            TODAY,
+                            1,
+                            NOW);
+
+            assertThat(text).contains("Петя");
+        }
+
+        /** Школьнику своё имя в каждой строке — шум: он и так знает, чей это урок. */
+        @org.junit.jupiter.api.Test
+        void aPupilDoesNotSeeTheirOwnNameOnEveryLine() {
+            String text =
+                    DigestView.render(
+                            "Дела на сегодня",
+                            List.of(),
+                            List.of(lesson(kid, "Математика", LocalTime.of(8, 30))),
+                            kid,
+                            byId,
+                            MOSCOW,
+                            TODAY,
+                            1,
+                            NOW);
+
+            assertThat(text).doesNotContain("Петя");
+        }
+
+        /** ⚠️ Урок идёт только в свой день недели: расписание — правило, а не список дат. */
+        @org.junit.jupiter.api.Test
+        void aLessonOfAnotherWeekdayDoesNotAppear() {
+            String text =
+                    DigestView.render(
+                            "Дела на сегодня",
+                            List.of(),
+                            List.of(
+                                    com.familytodo.domain.Lesson.create(
+                                            1L,
+                                            FAMILY,
+                                            kid.id(),
+                                            java.time.DayOfWeek.MONDAY,
+                                            LocalTime.of(8, 30),
+                                            LocalTime.of(9, 15),
+                                            "Математика",
+                                            LocalDate.of(2026, 8, 1),
+                                            null,
+                                            NOW)),
+                            kid,
+                            byId,
+                            MOSCOW,
+                            TODAY,
+                            1,
+                            NOW);
+
+            assertThat(text).doesNotContain("Математика");
+        }
+
+        /** Расписание вне срока действия — лето — не показывается вовсе. */
+        @org.junit.jupiter.api.Test
+        void aScheduleThatHasEndedDoesNotAppear() {
+            String text =
+                    DigestView.render(
+                            "Дела на сегодня",
+                            List.of(),
+                            List.of(
+                                    com.familytodo.domain.Lesson.create(
+                                            1L,
+                                            FAMILY,
+                                            kid.id(),
+                                            TODAY.getDayOfWeek(),
+                                            LocalTime.of(8, 30),
+                                            LocalTime.of(9, 15),
+                                            "Математика",
+                                            LocalDate.of(2025, 9, 1),
+                                            LocalDate.of(2026, 5, 31),
+                                            NOW)),
+                            kid,
+                            byId,
+                            MOSCOW,
+                            TODAY,
+                            1,
+                            NOW);
+
+            assertThat(text).doesNotContain("Математика");
+        }
+    }
+
+    private com.familytodo.domain.Lesson lesson(Member pupil, String subject, LocalTime at) {
+        return com.familytodo.domain.Lesson.create(
+                ids.incrementAndGet(),
+                FAMILY,
+                pupil.id(),
+                TODAY.getDayOfWeek(),
+                at,
+                at.plusMinutes(45),
+                subject,
+                LocalDate.of(2026, 8, 1),
+                null,
+                NOW);
     }
 
     private Task due(Member creator, String title, LocalDate day, LocalTime time) {

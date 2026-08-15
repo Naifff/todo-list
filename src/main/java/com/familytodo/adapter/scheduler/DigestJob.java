@@ -1,11 +1,13 @@
 package com.familytodo.adapter.scheduler;
 
+import com.familytodo.application.SchoolService;
 import com.familytodo.application.TaskQuery;
 import com.familytodo.application.port.FamilyRepository;
 import com.familytodo.application.port.MemberRepository;
 import com.familytodo.application.port.Notifier;
 import com.familytodo.application.port.TaskRepository;
 import com.familytodo.domain.Family;
+import com.familytodo.domain.Lesson;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
 import java.time.Clock;
@@ -49,6 +51,7 @@ public class DigestJob {
     private final FamilyRepository families;
     private final MemberRepository members;
     private final TaskRepository tasks;
+    private final SchoolService school;
     private final Notifier notifier;
     private final Clock clock;
 
@@ -56,11 +59,13 @@ public class DigestJob {
             FamilyRepository families,
             MemberRepository members,
             TaskRepository tasks,
+            SchoolService school,
             Notifier notifier,
             Clock clock) {
         this.families = families;
         this.members = members;
         this.tasks = tasks;
+        this.school = school;
         this.notifier = notifier;
         this.clock = clock;
     }
@@ -141,17 +146,34 @@ public class DigestJob {
             int days,
             boolean includeUndated) {
         List<Task> visible = withinHorizon(recipient, family, now, days, includeUndated);
-        if (visible.isEmpty()) {
+        // ⚠️ уроки берутся по правилу видимости, а не «что поручено мне»: у родителя своих уроков
+        // нет вовсе, а знать, во сколько забирать ребёнка, нужно именно ему. Дела остаются строго
+        // персональными — там вопрос другой: «что мне сегодня делать»
+        List<Lesson> lessons = school.visibleTo(recipient);
+
+        if (visible.isEmpty() && lessons.isEmpty()) {
             // пустой дайджест не отправляем: сообщение «дел нет» это шум, а не польза
             return;
         }
-        deliver(recipient, visible, roster, family, days);
+        deliver(recipient, visible, lessons, roster, family, days);
     }
 
     private void deliver(
-            Member recipient, List<Task> visible, List<Member> roster, Family family, int days) {
+            Member recipient,
+            List<Task> visible,
+            List<Lesson> lessons,
+            List<Member> roster,
+            Family family,
+            int days) {
         try {
-            notifier.digest(recipient, visible, roster, family.timezone(), days);
+            notifier.digest(
+                    recipient,
+                    visible,
+                    lessons,
+                    roster,
+                    family.timezone(),
+                    family.today(clock.instant()),
+                    days);
         } catch (RuntimeException e) {
             // один недоставленный дайджест не отменяет остальных в семье
             log.warn("digest for member {} not delivered", recipient.id(), e);

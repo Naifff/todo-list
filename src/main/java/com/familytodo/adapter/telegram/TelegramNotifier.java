@@ -85,8 +85,10 @@ public class TelegramNotifier implements Notifier {
     public void digest(
             Member recipient,
             List<Task> tasks,
+            List<com.familytodo.domain.Lesson> lessons,
             List<Member> family,
             ZoneId zone,
+            java.time.LocalDate from,
             int horizonDays) {
         Map<Long, Member> byId =
                 family.stream().collect(Collectors.toMap(Member::id, Function.identity()));
@@ -97,7 +99,15 @@ public class TelegramNotifier implements Notifier {
         send(
                 recipient,
                 DigestView.render(
-                        greeting(horizonDays), tasks, recipient, byId, zone, clock.instant()));
+                        greeting(horizonDays),
+                        tasks,
+                        lessons,
+                        recipient,
+                        byId,
+                        zone,
+                        from,
+                        horizonDays,
+                        clock.instant()));
     }
 
     /** Заголовок обязан совпадать с содержимым: «дела на сегодня» над недельным списком — неправда. */

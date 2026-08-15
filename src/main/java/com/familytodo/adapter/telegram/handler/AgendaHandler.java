@@ -9,7 +9,9 @@ import com.familytodo.adapter.telegram.render.CalendarHtmlRenderer;
 import com.familytodo.adapter.telegram.view.AgendaView;
 import com.familytodo.application.FamilyService;
 import com.familytodo.application.TaskQuery;
+import com.familytodo.application.SchoolService;
 import com.familytodo.application.TaskService;
+import com.familytodo.domain.Lesson;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
 import java.time.Clock;
@@ -31,13 +33,19 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
 
     private final TaskService tasks;
     private final FamilyService families;
+    private final SchoolService school;
     private final BotSender sender;
     private final Clock clock;
 
     public AgendaHandler(
-            TaskService tasks, FamilyService families, BotSender sender, Clock clock) {
+            TaskService tasks,
+            FamilyService families,
+            SchoolService school,
+            BotSender sender,
+            Clock clock) {
         this.tasks = tasks;
         this.families = families;
+        this.school = school;
         this.sender = sender;
         this.clock = clock;
     }
@@ -111,10 +119,16 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
                 families.roster(viewer).stream()
                         .collect(Collectors.toMap(Member::id, Function.identity()));
 
+        // уроки идут той же страницей и вперемешку с делами: календарь отвечает на вопрос «кто
+        // когда занят», а школа занимает больше половины дня ребёнка
+        List<Lesson> lessons = school.visibleTo(viewer);
+
         byte[] html =
                 asList
-                        ? CalendarHtmlRenderer.renderList(dated, undated, byId, zone, today, days, today)
-                        : CalendarHtmlRenderer.render(dated, undated, byId, zone, today, days, today);
+                        ? CalendarHtmlRenderer.renderList(
+                                dated, undated, lessons, byId, zone, today, days, today)
+                        : CalendarHtmlRenderer.render(
+                                dated, undated, lessons, byId, zone, today, days, today);
         sender.sendDocument(
                 request.chatId(),
                 html,
@@ -145,10 +159,15 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
                 families.roster(viewer).stream()
                         .collect(Collectors.toMap(Member::id, Function.identity()));
 
+        // ⚠️ В истории уроков НЕТ, и это решение. Расписание не версионируется: наложив сегодняшнее
+        // правило на май, мы показали бы предметы, которых тогда не было, — и отличить это от правды
+        // было бы нельзя. История про то, что случилось, а у урока следа не остаётся.
         byte[] html =
                 asList
-                        ? CalendarHtmlRenderer.renderList(past, List.of(), byId, zone, from, days, today)
-                        : CalendarHtmlRenderer.render(past, List.of(), byId, zone, from, days, today);
+                        ? CalendarHtmlRenderer.renderList(
+                                past, List.of(), List.of(), byId, zone, from, days, today)
+                        : CalendarHtmlRenderer.render(
+                                past, List.of(), List.of(), byId, zone, from, days, today);
         sender.sendDocument(
                 request.chatId(),
                 html,
