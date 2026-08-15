@@ -268,24 +268,33 @@ class TaskListHandlerTest {
                     .doesNotContain("<срочно>");
         }
 
-        /** Полноценной пагинации нет: курсор в 64 байтах и устаревание страниц дороже пользы. */
+        /**
+         * Длинный список приходит страницами, а не обрезком с припиской. Прежнее «…и ещё N» было
+         * тупиком: у этих дел не было кнопок, то есть добраться до них было нельзя вовсе.
+         */
         @Test
-        void truncatesLongListsWithACount() {
-            for (int i = 0; i < TaskListView.MAX_ITEMS + 3; i++) {
-                taskService.create(mom, kid.id(), "Дело " + i, TOMORROW_EVENING);
+        void aLongListComesInPages() {
+            for (int i = 1; i <= TaskListView.PAGE_SIZE + 3; i++) {
+                taskService.create(mom, kid.id(), "Дело %02d".formatted(i), TOMORROW_EVENING);
             }
             sender.clear();
 
             handler.handle(command(kid, "my"));
 
             String text = sender.texts.getFirst();
-            assertThat(text).contains("…и ещё 3");
-            assertThat(text).doesNotContain("Дело " + (TaskListView.MAX_ITEMS + 2));
+            assertThat(text).contains("1 из 2").contains("Дело 01").contains("Дело 10");
+            assertThat(text).doesNotContain("Дело 11").doesNotContain("…и ещё");
         }
 
+        /**
+         * ⚠️ Ради этого страница и десять дел, а не двадцать: двадцать заголовков по 200 символов
+         * дают сообщение длиннее допустимого, Telegram отвечает HTTP 400, и список не приходит
+         * вовсе. Страница обязана помещаться при любых заголовках — обрезанная означала бы дела,
+         * недостижимые ни с одной страницы.
+         */
         @Test
-        void fitsIntoTheTelegramMessageLimit() {
-            for (int i = 0; i < TaskListView.MAX_ITEMS + 5; i++) {
+        void aFullPageOfTheLongestTitlesStillFits() {
+            for (int i = 0; i < TaskListView.PAGE_SIZE * 3; i++) {
                 taskService.create(mom, kid.id(), "я".repeat(200), TOMORROW_EVENING);
             }
             sender.clear();

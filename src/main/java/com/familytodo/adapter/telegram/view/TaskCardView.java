@@ -26,6 +26,9 @@ public final class TaskCardView {
     public static final String REOPEN = "reopen";
     public static final String BACK = "back";
 
+    /** Листание списка: аргумент — буква списка и номер страницы, например {@code a2}. */
+    public static final String PAGE = "page";
+
     private static final DateTimeFormatter FULL = DateTimeFormatter.ofPattern("dd.MM HH:mm");
     private static final DateTimeFormatter TIME_ONLY = DateTimeFormatter.ofPattern("HH:mm");
 
@@ -103,7 +106,9 @@ public final class TaskCardView {
         }
         InlineKeyboardRow footer =
                 new InlineKeyboardRow(
-                        button("← Назад", BACK, String.valueOf(TaskRef.letter(kind))));
+                        // ⚠️ назад возвращает на ту страницу, где дело лежит, а не на первую:
+                        // ради этого в аргументе не буква списка, а ссылка на само дело
+                        button("← Назад", BACK, TaskRef.format(kind, task.id())));
         // ⚠️ Переход к правилу — единственный способ распорядиться повторением: из карточки
         // вхождения видно только один день, а «больше не повторять» живёт на серии
         if (task.isOccurrence()) {

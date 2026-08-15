@@ -367,6 +367,126 @@ class TaskActionHandlerTest {
                         NOW));
     }
 
+    /**
+     * Страницы. Прежнее решение «пагинации нет» держалось на посылке «дел мало»: показывались первые
+     * двадцать, остальные считались в приписке «…и ещё N» и были недостижимы вовсе — кнопок у них
+     * не было. Посылка перестала быть верной, как только за ботом оказалась вся семья.
+     */
+    @Nested
+    class Pages {
+
+        @Test
+        void aLongListIsCutIntoPagesAndSaysWhichOneThisIs() {
+            twentyFive();
+
+            handler.handle(callback(mom), page(TaskListView.Kind.ALL, 0));
+
+            String text = sender.edits.getFirst();
+            assertThat(text).contains("Дело 01").contains("Дело 10").doesNotContain("Дело 11");
+            assertThat(text).contains("1 из 3");
+            assertThat(labels()).contains("Вперёд ▶").doesNotContain("◀ Назад");
+        }
+
+        @Test
+        void theNextPageShowsTheNextTen() {
+            twentyFive();
+            handler.handle(callback(mom), page(TaskListView.Kind.ALL, 0));
+            sender.clear();
+
+            handler.handle(callback(mom), page(TaskListView.Kind.ALL, 1));
+
+            assertThat(sender.edits.getFirst())
+                    .contains("Дело 11")
+                    .contains("Дело 20")
+                    .doesNotContain("Дело 10")
+                    .contains("2 из 3");
+            assertThat(labels()).contains("◀ Назад", "Вперёд ▶");
+        }
+
+        /** ⚠️ Нумерация строк сквозная: она же на кнопках, и «1» на третьей странице врала бы. */
+        @Test
+        void numberingContinuesAcrossPages() {
+            twentyFive();
+
+            handler.handle(callback(mom), page(TaskListView.Kind.ALL, 2));
+
+            assertThat(sender.edits.getFirst()).contains("21.").contains("25.");
+            assertThat(labels()).contains("21", "25").contains("◀ Назад").doesNotContain("Вперёд ▶");
+        }
+
+        /** Ничего не теряется: раньше двадцать первое дело было недостижимо. */
+        @Test
+        void everyTaskIsReachableThroughSomePage() {
+            twentyFive();
+
+            handler.handle(callback(mom), page(TaskListView.Kind.ALL, 2));
+
+            assertThat(sender.edits.getFirst()).contains("Дело 25");
+        }
+
+        /** Возврат из карточки — на ту страницу, где дело лежит, а не на первую. */
+        @Test
+        void backFromACardReturnsToItsOwnPage() {
+            List<Task> created = twentyFive();
+            long far = created.get(22).id();
+            sender.clear();
+
+            handler.handle(callback(mom), back(TaskListView.Kind.ALL, far));
+
+            assertThat(sender.edits.getFirst()).contains("Дело 23").contains("3 из 3");
+        }
+
+        /**
+         * ⚠️ Кнопки живут в чате вечно: сообщение, отправленное до этой правки, несёт «← Назад» со
+         * старым аргументом из одной буквы. Оно обязано открывать список, а не ошибку.
+         */
+        @Test
+        void anOldBackButtonStillOpensTheList() {
+            twentyFive();
+            sender.clear();
+
+            handler.handle(
+                    callback(mom),
+                    new com.familytodo.adapter.telegram.CallbackData(
+                            TaskCardView.PREFIX, TaskCardView.BACK, "a"));
+
+            assertThat(sender.edits.getFirst()).contains("1 из 3");
+        }
+
+        private List<Task> twentyFive() {
+            List<Task> created = new ArrayList<>();
+            for (int i = 1; i <= 25; i++) {
+                created.add(
+                        tasks.create(
+                                mom,
+                                kid.id(),
+                                "Дело %02d".formatted(i),
+                                DUE.plusSeconds(i * 60L)));
+            }
+            sender.clear();
+            return created;
+        }
+
+        private List<String> labels() {
+            InlineKeyboardMarkup markup = sender.markups.getLast();
+            return markup.getKeyboard().stream()
+                    .flatMap(java.util.Collection::stream)
+                    .map(button -> button.getText())
+                    .toList();
+        }
+    }
+
+
+    private static CallbackData page(TaskListView.Kind kind, int number) {
+        return new CallbackData(
+                TaskCardView.PREFIX, TaskCardView.PAGE, TaskRef.letter(kind) + Integer.toString(number));
+    }
+
+    private static CallbackData back(TaskListView.Kind kind, long taskId) {
+        return new CallbackData(
+                TaskCardView.PREFIX, TaskCardView.BACK, TaskRef.format(kind, taskId));
+    }
+
     private static CallbackData action(String action, long taskId) {
         return new CallbackData(
                 TaskCardView.PREFIX, action, TaskRef.format(TaskListView.Kind.MINE, taskId));
@@ -418,6 +538,7 @@ class TaskActionHandlerTest {
     private static final class RecordingSender extends BotSender {
         private final List<String> texts = new ArrayList<>();
         private final List<String> edits = new ArrayList<>();
+        private final List<InlineKeyboardMarkup> markups = new ArrayList<>();
 
         RecordingSender() {
             super(mock(org.telegram.telegrambots.meta.generics.TelegramClient.class));
@@ -432,17 +553,20 @@ class TaskActionHandlerTest {
         @Override
         public boolean send(long chatId, String html, InlineKeyboardMarkup markup) {
             texts.add(html);
+            markups.add(markup);
             return true;
         }
 
         @Override
         public void edit(long chatId, int messageId, String html, InlineKeyboardMarkup markup) {
             edits.add(html);
+            markups.add(markup);
         }
 
         void clear() {
             texts.clear();
             edits.clear();
+            markups.clear();
         }
     }
 }

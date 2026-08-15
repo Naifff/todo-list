@@ -75,6 +75,10 @@ public class TaskActionHandler implements CallbackHandler, DialogHandler {
             back(request, actor, data.argument());
             return;
         }
+        if (TaskCardView.PAGE.equals(data.action())) {
+            turnPage(request, actor, data.argument());
+            return;
+        }
 
         TaskRef ref = TaskRef.parse(data.argument());
         switch (data.action()) {
@@ -148,18 +152,55 @@ public class TaskActionHandler implements CallbackHandler, DialogHandler {
         sender.send(request.chatId(), Texts.ASK_DECLINE_REASON);
     }
 
+    /**
+     * Возврат в список — на ту страницу, где лежит это дело.
+     *
+     * <p>⚠️ Аргумент из одной буквы тоже принимается, и это не мусор: кнопки живут в чате вечно, и
+     * сообщение, отправленное до появления страниц, несёт именно такой «← Назад». Оно обязано
+     * открывать список, а не ошибку.
+     */
     private void back(BotRequest request, Member actor, String argument) {
-        TaskListView.Kind kind =
-                switch (argument) {
-                    case "m" -> TaskListView.Kind.MINE;
-                    case "r" -> TaskListView.Kind.REQUESTED;
-                    case "a" -> TaskListView.Kind.ALL;
-                    default -> throw new IllegalArgumentException("unknown list kind");
-                };
+        TaskListView.Kind kind = kindOf(argument.charAt(0));
+        Long taskId = argument.length() > 1 ? TaskRef.parse(argument).taskId() : null;
+
         request.messageId()
                 .ifPresentOrElse(
-                        id -> lists.edit(request.chatId(), id, actor, kind),
+                        id -> {
+                            if (taskId == null) {
+                                lists.edit(request.chatId(), id, actor, kind, 0);
+                            } else {
+                                lists.editAround(request.chatId(), id, actor, kind, taskId);
+                            }
+                        },
                         () -> lists.send(request.chatId(), actor, kind));
+    }
+
+    /** Листание: буква списка и номер страницы, например {@code a2}. */
+    private void turnPage(BotRequest request, Member actor, String argument) {
+        TaskListView.Kind kind = kindOf(argument.charAt(0));
+        int page;
+        try {
+            page = Integer.parseInt(argument.substring(1));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("page is not a number", e);
+        }
+        if (page < 0) {
+            throw new IllegalArgumentException("page is negative");
+        }
+
+        request.messageId()
+                .ifPresentOrElse(
+                        id -> lists.edit(request.chatId(), id, actor, kind, page),
+                        () -> lists.send(request.chatId(), actor, kind));
+    }
+
+    private static TaskListView.Kind kindOf(char letter) {
+        return switch (letter) {
+            case 'm' -> TaskListView.Kind.MINE;
+            case 'r' -> TaskListView.Kind.REQUESTED;
+            case 'a' -> TaskListView.Kind.ALL;
+            default -> throw new IllegalArgumentException("unknown list kind");
+        };
     }
 
     /** Нажатие переписывает то же сообщение, а не плодит новые карточки. */

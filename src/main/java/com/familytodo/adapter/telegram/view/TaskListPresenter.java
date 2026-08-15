@@ -39,15 +39,41 @@ public class TaskListPresenter {
     }
 
     public void send(long chatId, Member viewer, TaskListView.Kind kind) {
-        present(viewer, kind, (text, markup) -> sender.send(chatId, text, markup));
+        present(viewer, kind, 0, (text, markup) -> sender.send(chatId, text, markup));
     }
 
     /** Список живёт одним сообщением: возврат переписывает его, а не добавляет ещё одно. */
-    public void edit(long chatId, int messageId, Member viewer, TaskListView.Kind kind) {
-        present(viewer, kind, (text, markup) -> sender.edit(chatId, messageId, text, markup));
+    public void edit(long chatId, int messageId, Member viewer, TaskListView.Kind kind, int page) {
+        present(viewer, kind, page, (text, markup) -> sender.edit(chatId, messageId, text, markup));
     }
 
-    private void present(Member viewer, TaskListView.Kind kind, Output output) {
+    /**
+     * Показать список так, чтобы названное дело оказалось на экране.
+     *
+     * <p>Возврат из карточки обязан вести туда, откуда пришли: человек листал до двадцать третьего
+     * дела, и первая страница — не то место, где он был. Номер страницы <b>вычисляется</b> по месту
+     * дела в свежем списке, а не носится в кнопке: список за это время мог измениться.
+     *
+     * <p>Дела в списке уже нет — его только что закрыли — значит и страницы у него нет: тогда
+     * первая, других сведений о том, где человек был, у нас не осталось.
+     */
+    public void editAround(
+            long chatId, int messageId, Member viewer, TaskListView.Kind kind, long taskId) {
+        List<Task> found = tasks.find(query(viewer, kind));
+        int index = indexOf(found, taskId);
+        edit(chatId, messageId, viewer, kind, index < 0 ? 0 : index / TaskListView.PAGE_SIZE);
+    }
+
+    private static int indexOf(List<Task> tasks, long taskId) {
+        for (int i = 0; i < tasks.size(); i++) {
+            if (tasks.get(i).id() == taskId) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void present(Member viewer, TaskListView.Kind kind, int page, Output output) {
         List<Task> found = tasks.find(query(viewer, kind));
         if (found.isEmpty()) {
             output.write(empty(kind), null);
@@ -60,9 +86,8 @@ public class TaskListPresenter {
                         .collect(Collectors.toMap(Member::id, Function.identity()));
 
         TaskListView.Rendered rendered =
-                TaskListView.render(header(kind), found, byId, kind, zone, clock.instant());
-        output.write(
-                rendered.text(), TaskListView.keyboard(found, kind, rendered.shown()));
+                TaskListView.render(header(kind), found, byId, kind, zone, clock.instant(), page);
+        output.write(rendered.text(), TaskListView.keyboard(found, kind, rendered));
     }
 
     /**

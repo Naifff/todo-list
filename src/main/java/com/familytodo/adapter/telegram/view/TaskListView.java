@@ -25,17 +25,20 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 public final class TaskListView {
 
     /**
-     * Больше не показываем. Полноценной пагинации нет намеренно: в сообщение помещается 4096
-     * символов, а курсор страницы в 64-байтном {@code callback_data} и устаревание страниц стоят
-     * дороже пользы.
+     * Сколько дел на странице.
+     *
+     * <p>⚠️ Десять, а не двадцать, и число выбрано не на глаз. Заголовок дела — до 200 символов;
+     * двадцать таких строк дают сообщение длиннее допустимых 4096, Telegram отвечает HTTP 400, и
+     * список не приходит вовсе. Десять помещаются при любых заголовках, поэтому страница никогда не
+     * обрезается — а обрезанная страница означала бы, что часть дел недостижима ни с какой из них.
+     *
+     * <p>Прежнее решение «пагинации нет, показываем первые двадцать» отменено 15 августа: оно
+     * держалось на посылке «дел мало», а с появлением у бота всей семьи двадцать первое дело стало
+     * недостижимым — кнопки у него не было вовсе.
      */
-    public static final int MAX_ITEMS = 20;
+    public static final int PAGE_SIZE = 10;
 
-    /**
-     * Лимита по количеству мало: двадцать задач по 200 символов дают сообщение вдвое длиннее
-     * допустимого, а Telegram отвечает на такое HTTP 400 — список не приходит вовсе. Поэтому
-     * строки добавляются, пока хватает бюджета символов.
-     */
+    /** Запас под хвост сообщения. Страховка: при десяти строках бюджет не может кончиться. */
     private static final int FOOTER_RESERVE = 40;
 
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm");
@@ -54,10 +57,16 @@ public final class TaskListView {
 
     /**
      * @param text готовая разметка сообщения
-     * @param shown сколько задач реально поместилось — по нему строится клавиатура, иначе кнопка
-     *     указывала бы на строку, которой в сообщении нет
+     * @param from номер первого показанного дела в общем списке — по нему строится клавиатура
+     * @param shown сколько дел на этой странице
+     * @param page номер страницы с нуля
+     * @param pages сколько страниц всего
      */
-    public record Rendered(String text, int shown) {}
+    public record Rendered(String text, int from, int shown, int page, int pages) {}
+
+    public static int pagesFor(int total) {
+        return Math.max(1, (total + PAGE_SIZE - 1) / PAGE_SIZE);
+    }
 
     public static Rendered render(
             String header,
@@ -65,42 +74,51 @@ public final class TaskListView {
             Map<Long, Member> byId,
             Kind kind,
             ZoneId zone,
-            Instant now) {
+            Instant now,
+            int page) {
 
-        StringBuilder out = new StringBuilder("<b>").append(header).append("</b>\n");
+        int pages = pagesFor(tasks.size());
+        int current = Math.clamp(page, 0, pages - 1);
+        int from = current * PAGE_SIZE;
+        int to = Math.min(tasks.size(), from + PAGE_SIZE);
+
+        StringBuilder out = new StringBuilder("<b>").append(header);
+        // страница называется только когда их несколько: «стр. 1 из 1» сообщает ровно ничего
+        if (pages > 1) {
+            out.append(" · стр. ").append(current + 1).append(" из ").append(pages);
+        }
+        out.append("</b>\n");
+
         int budget = HtmlEscaper.MESSAGE_LIMIT - FOOTER_RESERVE;
-
         int shown = 0;
-        int limit = Math.min(tasks.size(), MAX_ITEMS);
-        while (shown < limit) {
-            String line = line(shown + 1, tasks.get(shown), byId, kind, zone, now);
+        for (int i = from; i < to; i++) {
+            // ⚠️ нумерация сквозная: те же числа стоят на кнопках, и «1» на третьей странице
+            // отправляла бы искать первое дело списка
+            String line = line(i + 1, tasks.get(i), byId, kind, zone, now);
             if (out.length() + line.length() + 1 > budget) {
                 break;
             }
             out.append('\n').append(line);
             shown++;
         }
-
-        if (shown < tasks.size()) {
-            out.append("\n\n…и ещё ").append(tasks.size() - shown);
-        }
-        return new Rendered(out.toString(), shown);
+        return new Rendered(out.toString(), from, shown, current, pages);
     }
 
     /** Номерные кнопки под списком: подписи повторяют нумерацию строк, чтобы не искать глазами. */
-    public static InlineKeyboardMarkup keyboard(List<Task> tasks, Kind kind, int shown) {
+    public static InlineKeyboardMarkup keyboard(List<Task> tasks, Kind kind, Rendered rendered) {
         List<InlineKeyboardRow> rows = new ArrayList<>();
         InlineKeyboardRow row = new InlineKeyboardRow();
 
-        for (int i = 0; i < shown; i++) {
+        for (int i = 0; i < rendered.shown(); i++) {
+            int index = rendered.from() + i;
             row.add(
                     InlineKeyboardButton.builder()
-                            .text(Integer.toString(i + 1))
+                            .text(Integer.toString(index + 1))
                             .callbackData(
                                     new CallbackData(
                                                     TaskCardView.PREFIX,
                                                     TaskCardView.CARD,
-                                                    TaskRef.format(kind, tasks.get(i).id()))
+                                                    TaskRef.format(kind, tasks.get(index).id()))
                                             .serialize())
                             .build());
             if (row.size() == 5) {
@@ -111,7 +129,32 @@ public final class TaskListView {
         if (!row.isEmpty()) {
             rows.add(row);
         }
+
+        // ⚠️ стрелка появляется, только если ей есть куда вести: кнопка, которая ничего не делает,
+        // читается как сломанная — ответить «дальше некуда» отсюда нечем
+        InlineKeyboardRow nav = new InlineKeyboardRow();
+        if (rendered.page() > 0) {
+            nav.add(pageButton("◀ Назад", kind, rendered.page() - 1));
+        }
+        if (rendered.page() < rendered.pages() - 1) {
+            nav.add(pageButton("Вперёд ▶", kind, rendered.page() + 1));
+        }
+        if (!nav.isEmpty()) {
+            rows.add(nav);
+        }
         return InlineKeyboardMarkup.builder().keyboard(rows).build();
+    }
+
+    private static InlineKeyboardButton pageButton(String label, Kind kind, int page) {
+        return InlineKeyboardButton.builder()
+                .text(label)
+                .callbackData(
+                        new CallbackData(
+                                        TaskCardView.PREFIX,
+                                        TaskCardView.PAGE,
+                                        TaskRef.letter(kind) + Integer.toString(page))
+                                .serialize())
+                .build();
     }
 
     private static String line(
