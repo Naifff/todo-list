@@ -393,11 +393,23 @@ public final class Task {
         return status.isClosed() && allows(actor, this::isNamedAssignee, this::isCreator);
     }
 
+    /**
+     * Править дело: автор — или любой родитель семьи.
+     *
+     * <p>⚠️ Прежде родитель правил только дела, где исполнитель <b>ребёнок</b>. Правило выглядело
+     * стройно — «взрослые не переписывают просьбы друг друга», — и уткнулось в обычный семейный
+     * случай: Маша просит Пашу постирать рюкзаки, срок проходит, и Паша не может перенести дело,
+     * которое сам же и делает. Кнопки «Изменить» у него не было вовсе, то есть ответ на «перенеси»
+     * был не «нельзя», а пустота.
+     *
+     * <p>Решение принято 16 августа живьём: родитель правит всё в своей семье. Ребёнок — только то,
+     * что завёл сам: его дела ему и принадлежат, а чужие поручения он не переписывает.
+     */
     public boolean mayModify(Actor actor) {
         if (!(actor instanceof Actor.MemberActor member) || member.familyId() != familyId) {
             return false;
         }
-        return isCreator(member) || (isParent(member) && hasChildAssignee());
+        return isCreator(member) || isParent(member);
     }
 
     @SafeVarargs
@@ -427,9 +439,11 @@ public final class Task {
         throw new DomainException.NotPermitted("actor may not act on this task");
     }
 
+    /** Условие повторяет {@link #mayModify}: два набора правил разошлись бы, и кнопка появилась бы
+     * там, где нажатие даёт отказ. */
     private void requireEditor(Actor actor) {
         Actor.MemberActor member = asFamilyMember(actor);
-        if (isCreator(member) || (isParent(member) && hasChildAssignee())) {
+        if (isCreator(member) || isParent(member)) {
             return;
         }
         throw new DomainException.NotPermitted("actor may not modify this task");

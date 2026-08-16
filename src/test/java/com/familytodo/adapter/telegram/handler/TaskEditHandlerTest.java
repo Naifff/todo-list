@@ -359,15 +359,23 @@ class TaskEditHandlerTest {
             assertThat(reload(task).title()).isEqualTo("Вынести мусор до обеда");
         }
 
-        /** Самое тонкое правило матрицы: родитель не старше другого родителя. */
+        /**
+         * ⚠️ Родитель правит любое дело семьи — включая чужую просьбу взрослому.
+         *
+         * <p>Прежде правило было уже: родитель правил только дела, где исполнитель ребёнок. Оно
+         * выглядело стройно — «взрослые не переписывают просьбы друг друга», — и уткнулось в
+         * обычный случай: Маша просит Пашу постирать рюкзаки, срок проходит, и Паша не может
+         * перенести дело, которое сам же и делает. Кнопки «Изменить» у него не было вовсе.
+         */
         @Test
-        void parentMayNotEditAnotherParentsTask() {
+        void anyParentMayEditAnyTaskOfTheFamily() {
             Task task = tasks.create(dad, mom.id(), "Забрать посылку", DUE);
             Member granny = join(100003L, "Бабушка", Role.PARENT);
+            sender.clear();
 
-            assertThatThrownBy(
-                            () -> handler.handle(callback(granny), edit(TaskEditView.TITLE, task.id())))
-                    .isInstanceOf(DomainException.NotPermitted.class);
+            handler.handle(callback(granny), edit(TaskEditView.TITLE, task.id()));
+
+            assertThat(sender.texts).isNotEmpty();
         }
 
         /** Право проверяется до вопроса: иначе человек напишет название и лишь потом узнает. */

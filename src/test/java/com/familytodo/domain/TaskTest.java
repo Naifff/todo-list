@@ -247,14 +247,20 @@ class TaskTest {
             assertThat(task.title()).isEqualTo("Вынести мусор до обеда");
         }
 
-        /** Самое тонкое правило матрицы: родитель не старше другого родителя. */
+        /**
+         * ⚠️ Родитель правит любое дело семьи, даже чужую просьбу взрослому.
+         *
+         * <p>Прежде здесь был отказ: родитель правил только дела, где исполнитель ребёнок. Правило
+         * уткнулось в обычный случай — исполнитель-взрослый не мог перенести дело, которое сам же и
+         * делает, потому что кнопки «Изменить» у него не было вовсе.
+         */
         @Test
-        void deniedForParentOverAnotherParentsAssignment() {
+        void allowedForAnyParentOfTheFamily() {
             Task task = dadAsksMom();
 
-            assertThatThrownBy(() -> task.edit(parent(GRANNY), "не моё дело", DUE))
-                    .isInstanceOf(DomainException.NotPermitted.class);
-            assertThat(task.title()).isEqualTo("Забрать посылку");
+            task.edit(parent(GRANNY), "Забрать посылку завтра", DUE);
+
+            assertThat(task.title()).isEqualTo("Забрать посылку завтра");
         }
 
         @Test
@@ -319,12 +325,13 @@ class TaskTest {
             assertThatCode(() -> task.assertDeletableBy(parent(DAD))).doesNotThrowAnyException();
         }
 
+        /** Удаление идёт с правкой одним правилом: разделять их было бы двумя матрицами прав. */
         @Test
-        void deniedForParentOverAnotherParentsAssignment() {
+        void allowedForAnyParentOfTheFamily() {
             Task task = dadAsksMom();
 
-            assertThatThrownBy(() -> task.assertDeletableBy(parent(GRANNY)))
-                    .isInstanceOf(DomainException.NotPermitted.class);
+            assertThatCode(() -> task.assertDeletableBy(parent(GRANNY)))
+                    .doesNotThrowAnyException();
         }
 
         @Test

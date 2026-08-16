@@ -269,13 +269,15 @@ class TaskAssigneesTest {
                     .isInstanceOf(DomainException.InvalidTransition.class);
         }
 
+        /** ⚠️ Родитель распоряжается кругом исполнителей в любом деле семьи, а ребёнок — нет. */
         @Test
-        void anOutsiderMayNotChangeWhoDoesIt() {
+        void aChildMayNotChangeWhoDoesSomeoneElsesTask() {
             Task task = doctorForBothParents();
+            Actor child = Actor.member(KID, FAMILY, Role.CHILD);
 
-            assertThatThrownBy(() -> task.assign(parent(GRANNY), new Assignee(KID, Role.CHILD)))
+            assertThatThrownBy(() -> task.assign(child, new Assignee(KID, Role.CHILD)))
                     .isInstanceOf(DomainException.NotPermitted.class);
-            assertThatThrownBy(() -> task.unassign(parent(GRANNY), DAD))
+            assertThatThrownBy(() -> task.unassign(child, DAD))
                     .isInstanceOf(DomainException.NotPermitted.class);
         }
 
@@ -312,9 +314,13 @@ class TaskAssigneesTest {
             assertThat(task.mayModify(parent(GRANNY))).isTrue();
         }
 
+        /**
+         * ⚠️ Было наоборот: родитель правил только дела с ребёнком-исполнителем. Изменено 16
+         * августа живьём — исполнитель-взрослый не мог перенести дело, которое сам же и делает.
+         */
         @Test
-        void aParentMayNotModifyWhenEveryAssigneeIsAnAdult() {
-            assertThat(doctorForBothParents().mayModify(parent(GRANNY))).isFalse();
+        void aParentMayModifyEvenWhenEveryAssigneeIsAnAdult() {
+            assertThat(doctorForBothParents().mayModify(parent(GRANNY))).isTrue();
         }
     }
 }
