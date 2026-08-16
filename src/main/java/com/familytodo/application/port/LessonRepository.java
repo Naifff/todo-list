@@ -25,8 +25,13 @@ public interface LessonRepository {
      */
     int replace(long familyId, long memberId, List<Lesson> lessons);
 
+    /**
+     * Расписание одного участника — единственный способ достать уроки.
+     *
+     * <p>⚠️ Выборки «всё, что мне видно» здесь нет намеренно, в отличие от задач и серий. Уроки
+     * показываются только тому, чьи они, и на каждом экране речь идёт о конкретном участнике:
+     * в календаре о смотрящем, в {@code /school} о выбранном ребёнке. Метод с необязательным
+     * фильтром существовал и позволял забыть его заполнить — этим и кончилось.
+     */
     List<Lesson> findByMember(long familyId, long memberId);
-
-    /** Расписание всех, кого этому участнику положено видеть. */
-    List<Lesson> findVisible(long familyId, Long visibleToMemberId);
 }

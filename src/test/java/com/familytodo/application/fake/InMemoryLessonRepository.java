@@ -40,18 +40,6 @@ public final class InMemoryLessonRepository implements LessonRepository {
                         .toList());
     }
 
-    @Override
-    public List<Lesson> findVisible(long familyId, Long visibleToMemberId) {
-        return sorted(
-                lessons.values().stream()
-                        .filter(lesson -> lesson.familyId() == familyId)
-                        .filter(
-                                lesson ->
-                                        visibleToMemberId == null
-                                                || lesson.memberId() == visibleToMemberId)
-                        .toList());
-    }
-
     /** Тот же порядок, что в запросе: по дню недели, затем по времени начала. */
     private static List<Lesson> sorted(List<Lesson> found) {
         List<Lesson> copy = new ArrayList<>(found);

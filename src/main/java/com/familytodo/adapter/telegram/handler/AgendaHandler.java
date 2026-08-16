@@ -119,9 +119,10 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
                 families.roster(viewer).stream()
                         .collect(Collectors.toMap(Member::id, Function.identity()));
 
-        // уроки идут той же страницей и вперемешку с делами: календарь отвечает на вопрос «кто
-        // когда занят», а школа занимает больше половины дня ребёнка
-        List<Lesson> lessons = school.visibleTo(viewer);
+        // уроки идут той же страницей и вперемешку с делами: школа занимает больше половины дня.
+        // ⚠️ Но только свои: календарь родителя семейный, а расписание ребёнка в нём — не «кто
+        // когда занят», а тридцать плашек в неделю, среди которых теряется настоящее дело
+        List<Lesson> lessons = school.own(viewer);
 
         byte[] html =
                 asList

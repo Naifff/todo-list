@@ -8,7 +8,6 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -86,24 +85,6 @@ public class JdbcLessonRepository implements LessonRepository {
     public List<Lesson> findByMember(long familyId, long memberId) {
         return jdbc.sql(SELECT + " where l.family_id = ? and l.member_id = ? order by l.day_of_week, l.starts_at")
                 .params(familyId, memberId)
-                .query(JdbcLessonRepository::mapRow)
-                .list();
-    }
-
-    /**
-     * Видимость та же, что у задач: ребёнок видит своё расписание, родитель — всех детей семьи.
-     * Условие в SQL, а не отсевом после выборки.
-     */
-    @Override
-    public List<Lesson> findVisible(long familyId, Long visibleToMemberId) {
-        List<Object> params = new ArrayList<>(List.of(familyId));
-        String sql = SELECT + " where l.family_id = ?";
-        if (visibleToMemberId != null) {
-            sql += " and l.member_id = ?";
-            params.add(visibleToMemberId);
-        }
-        return jdbc.sql(sql + " order by l.day_of_week, l.starts_at")
-                .params(params)
                 .query(JdbcLessonRepository::mapRow)
                 .list();
     }

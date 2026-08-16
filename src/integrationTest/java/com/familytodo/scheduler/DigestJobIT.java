@@ -42,6 +42,7 @@ class DigestJobIT extends AbstractSqliteIT {
     private JdbcTaskRepository tasks;
     private RecordingNotifier notifier;
     private DigestJob job;
+    private com.familytodo.application.SchoolService school;
 
     @BeforeEach
     void wire() {
@@ -51,20 +52,14 @@ class DigestJobIT extends AbstractSqliteIT {
         members = new JdbcMemberRepository(jdbc, sequence);
         tasks = new JdbcTaskRepository(jdbc, sequence);
         notifier = new RecordingNotifier();
-        job =
-                new DigestJob(
-                        familyRepository,
+        school =
+                new com.familytodo.application.SchoolService(
+                        new com.familytodo.adapter.persistence.JdbcLessonRepository(jdbc, sequence),
                         members,
-                        tasks,
-                        new com.familytodo.application.SchoolService(
-                                new com.familytodo.adapter.persistence.JdbcLessonRepository(
-                                        jdbc, sequence),
-                                members,
-                                familyRepository,
-                                new com.familytodo.application.LessonParser(),
-                                clock),
-                        notifier,
+                        familyRepository,
+                        new com.familytodo.application.LessonParser(),
                         clock);
+        job = new DigestJob(familyRepository, members, tasks, school, notifier, clock);
     }
 
     @Nested
@@ -220,6 +215,30 @@ class DigestJobIT extends AbstractSqliteIT {
 
             assertThat(notifier.sizeFor(mom.id(), 1)).isEqualTo(1);
             assertThat(notifier.sizeFor(dad.id(), 1)).isEqualTo(1);
+        }
+
+        /**
+         * ⚠️ Уроки в дайджесте тоже строго свои. Прежде здесь стояло правило видимости — родителю
+         * приходило расписание всех детей, — и на недельном горизонте это тридцать строк уроков в
+         * одном сообщении. Дайджест отвечает «что мне сегодня делать»: урок ребёнка на этот вопрос
+         * не отвечает, а расписание целиком показывает {@code /school}.
+         */
+        @Test
+        void lessonsOfAChildDoNotReachTheParent() {
+            Family family = family("Румянцевы", MOSCOW);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            Member kid = join(family, 512034877L, "Петя", Role.CHILD);
+            school.replace(mom, kid.id(), "Пт 10:00 Химия");
+            dated(family, mom, "Моё", "2026-08-07T16:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            // ⚠️ дайджест у мамы обязан быть: без своего дела «ноль уроков» прошло бы вхолостую —
+            // не потому, что правило работает, а потому, что сообщения не было вовсе
+            assertThat(notifier.sizeFor(mom.id(), 1)).isEqualTo(1);
+            assertThat(notifier.lessonsFor(mom.id(), 1)).isZero();
+            assertThat(notifier.lessonsFor(kid.id(), 1)).isEqualTo(1);
         }
 
         /** Дела без даты тоже персональные. */
@@ -644,6 +663,7 @@ class DigestJobIT extends AbstractSqliteIT {
         private final List<Integer> sizes = new ArrayList<>();
         private final List<Long> failing = new ArrayList<>();
         private final List<Integer> horizons = new ArrayList<>();
+        private final List<Integer> lessonCounts = new ArrayList<>();
 
         int sizeFor(long memberId) {
             return sizes.get(recipients.indexOf(memberId));
@@ -657,6 +677,16 @@ class DigestJobIT extends AbstractSqliteIT {
                 }
             }
             throw new AssertionError("дайджеста на " + horizonDays + " дн. не было");
+        }
+
+        /** Сколько уроков уехало получателю. Ноль — в том числе когда дайджеста не было вовсе. */
+        int lessonsFor(long memberId, int horizonDays) {
+            for (int i = 0; i < recipients.size(); i++) {
+                if (recipients.get(i) == memberId && horizons.get(i) == horizonDays) {
+                    return lessonCounts.get(i);
+                }
+            }
+            return 0;
         }
 
         long countFor(long memberId) {
@@ -678,6 +708,7 @@ class DigestJobIT extends AbstractSqliteIT {
             }
             recipients.add(recipient.id());
             sizes.add(tasks.size());
+            lessonCounts.add(lessons.size());
         }
 
     }

@@ -98,22 +98,21 @@ class LessonRepositoryIT extends AbstractSqliteIT {
         repository.replace(FAMILY_A, KID, List.of(lesson(1L, KID, DayOfWeek.MONDAY, "Математика")));
 
         assertThat(repository.findByMember(FAMILY_B, KID)).isEmpty();
-        assertThat(repository.findVisible(FAMILY_B, null)).isEmpty();
     }
 
-    /** Видимость внутри семьи: ребёнок своё, родитель — всех детей. */
+    /**
+     * Уроки достаются только по участнику: выборки «всё, что мне видно» у расписания нет вовсе,
+     * и брат в ответ не попадает никогда — ни родителю, ни ребёнку.
+     */
     @Test
-    void aChildSeesOnlyTheirOwnLessons() {
+    void lessonsOfAnotherChildNeverComeBack() {
         repository.replace(FAMILY_A, KID, List.of(lesson(1L, KID, DayOfWeek.MONDAY, "Математика")));
         repository.replace(
                 FAMILY_A, OTHER_KID, List.of(lesson(2L, OTHER_KID, DayOfWeek.MONDAY, "Русский")));
 
-        assertThat(repository.findVisible(FAMILY_A, KID))
+        assertThat(repository.findByMember(FAMILY_A, KID))
                 .extracting(Lesson::subject)
                 .containsExactly("Математика");
-        assertThat(repository.findVisible(FAMILY_A, null))
-                .extracting(Lesson::subject)
-                .containsExactlyInAnyOrder("Математика", "Русский");
     }
 
     /**

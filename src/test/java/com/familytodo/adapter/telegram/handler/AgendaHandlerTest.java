@@ -415,6 +415,66 @@ class AgendaHandlerTest {
      * Второй вид того же файла — списком. Занял место картинки: у сетки день упирается в ось и её
      * границы, у списка границ нет вовсе, и выбирает человек.
      */
+    /**
+     * ⚠️ Уроки — <b>исключение</b> из правила «родитель видит календарь семьи», и исключение
+     * сознательное. Найдено с телефона 16 августа: у ребёнка тридцать уроков в неделю, и в месячной
+     * сетке родителя понедельник забит ими целиком — настоящее дело в тот день теряется среди
+     * «Химия», «География», «История». Правило видимости задач отвечает на вопрос «что мне можно
+     * увидеть», а календарь отвечает на «кто когда занят»; урок ребёнка не занимает родителя.
+     *
+     * <p>Расписание ребёнка родителю по-прежнему доступно — но там, где его и спрашивают:
+     * {@code /school} → выбрать ребёнка.
+     */
+    @Nested
+    class Lessons {
+
+        @org.junit.jupiter.api.BeforeEach
+        void schedule() {
+            school.replace(mom, kid.id(), "Пт 10:00 Химия");
+            sender.clear();
+        }
+
+        @Test
+        void aParentDoesNotSeeTheLessonsOfAChild() {
+            handler.handle(callback(mom), page(7));
+
+            assertThat(text(0)).doesNotContain("Химия");
+        }
+
+        @Test
+        void aChildSeesTheirOwnLessons() {
+            handler.handle(callback(kid), page(7));
+
+            assertThat(text(0)).contains("Химия");
+        }
+
+        /** Разные правила про один и тот же урок в двух видах путали бы сильнее, чем помогали. */
+        @Test
+        void theListViewFollowsTheSameRule() {
+            handler.handle(callback(mom), list(7));
+            handler.handle(callback(kid), list(7));
+
+            assertThat(text(0)).doesNotContain("Химия");
+            assertThat(text(1)).contains("Химия");
+        }
+
+        /** Дела ребёнка родитель видит по-прежнему: правило меняется только для уроков. */
+        @Test
+        void theTasksOfAChildStayVisibleToTheParent() {
+            task("Вынести мусор", "2026-08-07T16:00:00Z");
+            sender.clear();
+
+            handler.handle(callback(mom), page(7));
+
+            assertThat(text(0)).contains("Вынести мусор").doesNotContain("Химия");
+        }
+
+        private String text(int index) {
+            return new String(
+                    sender.documents.get(index).png(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+    }
+
     @Nested
     class ListPage {
 
