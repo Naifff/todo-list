@@ -270,6 +270,14 @@ public class JdbcTaskRepository implements TaskRepository {
             sql.append(" and t.starts_at is null and t.due_at is null");
         }
 
+        // ⚠️ А протухшее — то, что кончилось больше трёх дней назад, — из списка уходит совсем:
+        // трёх дней достаточно, чтобы перенести дело, если оно ещё нужно. Условие только про
+        // события: у дела со сроком starts_at пуст, и просроченный срок остаётся навсегда
+        if (query.eventsHiddenBefore() != null) {
+            sql.append(" and (t.starts_at is null or coalesce(t.ends_at, t.starts_at) >= ?)");
+            params.add(query.eventsHiddenBefore().toEpochMilli());
+        }
+
         // ⚠️ Прошедшее событие уходит в КОНЕЦ, а не из списка. Сортировка по моменту ставила его
         // впереди всего будущего, и вчерашнее выглядело ближайшим; отсечь его целиком оказалось
         // хуже — открыть и перенести стало нечем. Конец интервала, а не начало: дело идёт с 18:30

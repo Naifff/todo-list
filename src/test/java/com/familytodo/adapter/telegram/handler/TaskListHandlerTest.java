@@ -205,6 +205,54 @@ class TaskListHandlerTest {
             assertThat(sender.texts.getFirst()).contains("Вынести мусор").contains("❗️");
         }
 
+        /**
+         * ⚠️ Через три дня протухшее событие уходит из списка совсем: этого достаточно, чтобы
+         * перенести дело, если оно ещё нужно, а дальше оно только копится.
+         */
+        @Test
+        void afterThreeDaysTheEventLeavesTheListAltogether() {
+            Instant longAgo = Instant.parse("2026-08-03T16:00:00Z"); // четыре дня назад
+            Task event = taskService.create(mom, kid.id(), "Ролики", null);
+            event.schedule(
+                    mom.asActor(), longAgo, longAgo.plus(java.time.Duration.ofHours(1)), "цирк");
+            tasks.save(event);
+            taskService.create(mom, kid.id(), "Вынести мусор", TOMORROW_EVENING);
+            sender.clear();
+
+            handler.handle(command(mom, "all"));
+
+            assertThat(sender.texts.getFirst()).contains("Вынести мусор").doesNotContain("Ролики");
+        }
+
+        /** На третий день оно ещё здесь: граница по дню события, а не по «примерно неделя». */
+        @Test
+        void onTheThirdDayItIsStillThere() {
+            Instant threeDaysAgo = Instant.parse("2026-08-04T16:00:00Z");
+            Task event = taskService.create(mom, kid.id(), "Ролики", null);
+            event.schedule(
+                    mom.asActor(),
+                    threeDaysAgo,
+                    threeDaysAgo.plus(java.time.Duration.ofHours(1)),
+                    "цирк");
+            tasks.save(event);
+            sender.clear();
+
+            handler.handle(command(mom, "all"));
+
+            assertThat(sender.texts.getFirst()).contains("Ролики");
+        }
+
+        /** ⚠️ Просроченный срок не протухает никогда: его всё ещё можно сделать. */
+        @Test
+        void anOldOverdueDeadlineNeverLeaves() {
+            taskService.create(mom, kid.id(), "Постирать рюкзаки", Instant.parse("2026-07-01T16:00:00Z"));
+            sender.clear();
+
+            handler.handle(command(mom, "all"));
+
+            assertThat(sender.texts.getFirst()).contains("Постирать рюкзаки").contains("❗️");
+        }
+
         @Test
         void theSameHoldsForMine() {
             Task event = taskService.create(mom, kid.id(), "Ролики", null);

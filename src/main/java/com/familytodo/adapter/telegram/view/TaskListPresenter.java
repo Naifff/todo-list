@@ -7,6 +7,7 @@ import com.familytodo.application.TaskService;
 import com.familytodo.domain.Member;
 import com.familytodo.domain.Task;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -105,8 +106,20 @@ public class TaskListPresenter {
                     case REQUESTED -> TaskQuery.createdBy(viewer);
                     case ALL -> TaskQuery.visibleTo(viewer);
                 };
-        return query.pastEventsLast(startOfToday(viewer));
+        Instant startOfToday = startOfToday(viewer);
+        return query.pastEventsLast(startOfToday, startOfToday.minus(GRACE));
     }
+
+    /**
+     * Сколько дней прошедшее событие ещё висит в списке.
+     *
+     * <p>Три — потому что этого достаточно, чтобы перенести дело, если оно ещё нужно. Дальше оно
+     * только копится: событие, до которого не дошли руки за три дня, не дождётся и на десятый.
+     *
+     * <p>⚠️ После этого дело остаётся {@code OPEN} в базе и не показывается ни на одном экране —
+     * история в {@code /agenda} кнопок не даёт. Размен осознанный.
+     */
+    private static final Duration GRACE = Duration.ofDays(3);
 
     /** Граница по дню, а не по моменту: сегодняшнее событие видно весь день, как и в дайджесте. */
     private Instant startOfToday(Member viewer) {

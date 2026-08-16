@@ -296,9 +296,34 @@ class TaskRepositoryIT extends AbstractSqliteIT {
         List<Task> open =
                 repository.find(
                         new TaskQuery(FAMILY_A, null, null, null, OPEN)
-                                .pastEventsLast(Instant.parse("2026-08-07T00:00:00Z")));
+                                .pastEventsLast(Instant.parse("2026-08-07T00:00:00Z"), null));
 
         assertThat(open).extracting(Task::title).containsExactly("Вынести мусор", "Ролики");
+    }
+
+    /**
+     * Протухшее — кончившееся больше трёх дней назад — из выборки уходит совсем. Порядок и это
+     * условие живут в одном запросе, поэтому проверяются на настоящем SQL.
+     */
+    @Test
+    void anEventOlderThanTheGraceIsGoneWhileAnOldDeadlineStays() {
+        Task event = repository.save(dated(100L, "Ролики", "2026-08-20T16:00:00Z"));
+        event.schedule(
+                com.familytodo.domain.Actor.member(MOM, FAMILY_A, Role.PARENT),
+                Instant.parse("2026-08-01T15:30:00Z"),
+                Instant.parse("2026-08-01T17:00:00Z"),
+                "цирк");
+        repository.save(event);
+        repository.save(dated(101L, "Постирать рюкзаки", "2026-07-01T16:00:00Z"));
+
+        List<Task> open =
+                repository.find(
+                        new TaskQuery(FAMILY_A, null, null, null, OPEN)
+                                .pastEventsLast(
+                                        Instant.parse("2026-08-07T00:00:00Z"),
+                                        Instant.parse("2026-08-04T00:00:00Z")));
+
+        assertThat(open).extracting(Task::title).containsExactly("Постирать рюкзаки");
     }
 
     /** Граница по дню: событие, кончившееся сегодня утром, из списка не уходит. */
@@ -315,7 +340,7 @@ class TaskRepositoryIT extends AbstractSqliteIT {
         List<Task> open =
                 repository.find(
                         new TaskQuery(FAMILY_A, null, null, null, OPEN)
-                                .pastEventsLast(Instant.parse("2026-08-06T21:00:00Z")));
+                                .pastEventsLast(Instant.parse("2026-08-06T21:00:00Z"), null));
 
         assertThat(open).extracting(Task::title).containsExactly("Зарядка");
     }

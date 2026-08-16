@@ -26,7 +26,8 @@ public record TaskQuery(
         Instant from,
         Instant to,
         boolean undatedOnly,
-        Instant eventsFrom) {
+        Instant eventsFrom,
+        Instant eventsHiddenBefore) {
 
     /** Прежняя форма без горизонта: подавляющее большинство выборок не про диапазон дат. */
     public TaskQuery(
@@ -35,7 +36,9 @@ public record TaskQuery(
             Long assigneeId,
             Long creatorId,
             Set<TaskStatus> statuses) {
-        this(familyId, visibleToMemberId, assigneeId, creatorId, statuses, null, null, false, null);
+        this(
+                familyId, visibleToMemberId, assigneeId, creatorId, statuses, null, null, false,
+                null, null);
     }
 
     /** Прежняя форма с горизонтом: события отсекать не просили. */
@@ -48,7 +51,9 @@ public record TaskQuery(
             Instant from,
             Instant to,
             boolean undatedOnly) {
-        this(familyId, visibleToMemberId, assigneeId, creatorId, statuses, from, to, undatedOnly, null);
+        this(
+                familyId, visibleToMemberId, assigneeId, creatorId, statuses, from, to, undatedOnly,
+                null, null);
     }
 
     /**
@@ -64,10 +69,16 @@ public record TaskQuery(
      * «вынести мусор к 19:00» стоит на своём месте по сроку — решение «просроченное с ростом срока
      * не становится менее важным» в силе.
      *
+     * <p>А через несколько дней такое событие уходит и из списка: трёх дней достаточно, чтобы
+     * перенести дело, если оно ещё нужно. ⚠️ Цена названа прямо — дальше оно остаётся {@code OPEN} в
+     * базе и не показывается ни на одном экране. Это осознанный размен, а не недосмотр.
+     *
      * @param startOfToday начало сегодняшнего дня в зоне семьи; сегодняшнее событие прошедшим не
      *     считается весь день, как и в дайджесте
+     * @param hiddenBefore событие, кончившееся раньше этого момента, в список не попадает вовсе;
+     *     {@code null} — не прятать
      */
-    public TaskQuery pastEventsLast(Instant startOfToday) {
+    public TaskQuery pastEventsLast(Instant startOfToday, Instant hiddenBefore) {
         return new TaskQuery(
                 familyId,
                 visibleToMemberId,
@@ -77,7 +88,8 @@ public record TaskQuery(
                 from,
                 to,
                 undatedOnly,
-                startOfToday);
+                startOfToday,
+                hiddenBefore);
     }
 
     private static final Set<TaskStatus> OPEN_ONLY = EnumSet.of(TaskStatus.OPEN);
@@ -114,7 +126,7 @@ public record TaskQuery(
     public TaskQuery withStatuses(Set<TaskStatus> newStatuses) {
         return new TaskQuery(
                 familyId, visibleToMemberId, assigneeId, creatorId, newStatuses, from, to,
-                undatedOnly, eventsFrom);
+                undatedOnly, eventsFrom, eventsHiddenBefore);
     }
 
     /**
