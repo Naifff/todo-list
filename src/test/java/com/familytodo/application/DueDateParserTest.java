@@ -285,6 +285,69 @@ class DueDateParserTest {
         }
     }
 
+    /**
+     * ⚠️ Дни словами. Раньше «завтра» уезжало в <b>место</b>: дело получало «Где: завтра» и
+     * оставалось на прежнем дне. Отказа при этом не было — была тихая неправда, и найти её можно
+     * было только тем, что дело не переехало.
+     */
+    @Nested
+    class DaysInWords {
+
+        @Test
+        void tomorrowMovesTheTaskToTomorrow() {
+            DueDateParser.Plan plan = parser.parsePlan("завтра", MOSCOW).orElseThrow();
+
+            assertThat(plan.dueAt()).isEqualTo(Instant.parse("2026-08-08T16:00:00Z"));
+            assertThat(plan.location()).isNull();
+        }
+
+        @Test
+        void aWordCarriesTimeAndPlaceJustLikeADate() {
+            DueDateParser.Plan plan =
+                    parser.parsePlan("завтра 18:30-20:00 цирк", MOSCOW).orElseThrow();
+
+            assertThat(plan.startsAt()).isEqualTo(Instant.parse("2026-08-08T15:30:00Z"));
+            assertThat(plan.endsAt()).isEqualTo(Instant.parse("2026-08-08T17:00:00Z"));
+            assertThat(plan.location()).isEqualTo("цирк");
+        }
+
+        @Test
+        void todayAndTheDayAfterAreUnderstoodToo() {
+            assertThat(parser.parsePlan("сегодня 21:00", MOSCOW).orElseThrow().dueAt())
+                    .isEqualTo(Instant.parse("2026-08-07T18:00:00Z"));
+            assertThat(parser.parsePlan("послезавтра", MOSCOW).orElseThrow().dueAt())
+                    .isEqualTo(Instant.parse("2026-08-09T16:00:00Z"));
+        }
+
+        @Test
+        void theCapitalisedFormWorksToo() {
+            assertThat(parser.parsePlan("Завтра", MOSCOW).orElseThrow().dueAt())
+                    .isEqualTo(Instant.parse("2026-08-08T16:00:00Z"));
+        }
+
+        /** ⚠️ Слово не должно съедать место: «завтраки» — это не «завтра». */
+        @Test
+        void aWordThatMerelyStartsTheSameIsAPlace() {
+            DueDateParser.Plan plan = parser.parsePlan("завтраки", MOSCOW).orElseThrow();
+
+            assertThat(plan.dueAt()).isNull();
+            assertThat(plan.location()).isEqualTo("завтраки");
+        }
+
+        /** При правке дела день по умолчанию не мешает: названное слово сильнее. */
+        @Test
+        void theWordWinsOverTheTasksOwnDay() {
+            DueDateParser.Plan plan =
+                    parser.parsePlan(
+                                    "завтра",
+                                    MOSCOW,
+                                    java.time.LocalDate.of(2026, 8, 1))
+                            .orElseThrow();
+
+            assertThat(plan.dueAt()).isEqualTo(Instant.parse("2026-08-08T16:00:00Z"));
+        }
+    }
+
     @Nested
     class Slots {
 

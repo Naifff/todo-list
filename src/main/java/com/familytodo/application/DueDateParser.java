@@ -65,6 +65,19 @@ public class DueDateParser {
             Pattern.compile(
                     "^(?:(\\d{1,2}):(\\d{2})(?:\\s*[-–]\\s*(\\d{1,2}):(\\d{2}))?)?\\s*(.*)$");
 
+    /**
+     * ⚠️ «сегодня», «завтра», «послезавтра» — так люди и пишут, а разбор знал только цифры, и слово
+     * молча уезжало в место: дело получало «Где: завтра» и оставалось на прежнем дне. Тот же класс
+     * ошибки, что и «27.08» в месте, только заметить его труднее — отказа нет, есть тихая неправда.
+     *
+     * <p>{@code UNICODE_CASE} обязателен рядом с {@code CASE_INSENSITIVE}: без него нечувствительность
+     * к регистру работает только для латиницы, и «Завтра» с большой буквы не совпало бы.
+     */
+    private static final Pattern DAY_WORD =
+            Pattern.compile(
+                    "^(сегодня|завтра|послезавтра)(?=\\s|$)",
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
     private static final Pattern DATE_PREFIX =
             Pattern.compile("^(\\d{1,2})\\.(\\d{1,2})(?:\\.(\\d{4}))?(?=\\s|$)");
 
@@ -281,10 +294,21 @@ public class DueDateParser {
         String rest = input.trim();
         LocalDate today = LocalDate.now(clock.withZone(zone));
 
-        // дата
+        // дата — словом или числом
         LocalDate date = null;
+        Matcher dayWord = DAY_WORD.matcher(rest);
+        if (dayWord.find()) {
+            date =
+                    switch (dayWord.group(1).toLowerCase(java.util.Locale.of("ru"))) {
+                        case "завтра" -> today.plusDays(1);
+                        case "послезавтра" -> today.plusDays(2);
+                        default -> today;
+                    };
+            rest = rest.substring(dayWord.end()).trim();
+        }
+
         Matcher datePrefix = DATE_PREFIX.matcher(rest);
-        if (datePrefix.find()) {
+        if (date == null && datePrefix.find()) {
             Optional<LocalDate> parsed =
                     date(datePrefix.group(1), datePrefix.group(2), datePrefix.group(3), today);
             if (parsed.isEmpty()) {
