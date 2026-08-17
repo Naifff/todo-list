@@ -64,7 +64,15 @@ class AgendaHandlerTest {
                         families,
                         new com.familytodo.application.LessonParser(),
                         clock);
-        handler = new AgendaHandler(tasks, familyService, school, sender, clock);
+        handler =
+                new AgendaHandler(
+                        tasks,
+                        familyService,
+                        school,
+                        new com.familytodo.adapter.telegram.view.AgendaPresenter(
+                                tasks, familyService, sender, clock),
+                        sender,
+                        clock);
 
         mom = familyService.createFamily(100000001L, 100000001L, "Мама", "Румянцевы", MOSCOW);
         kid =

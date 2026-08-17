@@ -105,39 +105,39 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
 
     private void showMenu(BotRequest request, Member actor, TaskRef ref) {
         Task task = editable(actor, ref);
-        edit(request, card(task, actor), TaskEditView.menu(task, ref.kind()));
+        edit(request, card(task, actor), TaskEditView.menu(task, ref));
     }
 
     private void askTitle(BotRequest request, Member actor, TaskRef ref) {
         editable(actor, ref);
         dialogs.put(
                 request.telegramUserId(),
-                new DialogState.AwaitingNewTitle(ref.taskId(), ref.kind()));
+                new DialogState.AwaitingNewTitle(ref));
         sender.send(request.chatId(), Texts.ASK_TASK_TITLE);
     }
 
     private void askDue(BotRequest request, Member actor, TaskRef ref) {
         editable(actor, ref);
         dialogs.put(
-                request.telegramUserId(), new DialogState.EditingTask(ref.taskId(), ref.kind()));
+                request.telegramUserId(), new DialogState.EditingTask(ref));
         edit(request, Texts.ASK_DUE, TaskEditView.dueDates());
     }
 
     private void askAssignee(BotRequest request, Member actor, TaskRef ref) {
         Task task = editable(actor, ref);
         dialogs.put(
-                request.telegramUserId(), new DialogState.EditingTask(ref.taskId(), ref.kind()));
+                request.telegramUserId(), new DialogState.EditingTask(ref));
         edit(
                 request,
                 Texts.ASK_ASSIGNEES_EDIT,
-                TaskEditView.assignees(task, families.roster(actor), ref.kind()));
+                TaskEditView.assignees(task, families.roster(actor), ref));
     }
 
     private void askSlot(BotRequest request, Member actor, TaskRef ref) {
         editable(actor, ref);
         dialogs.put(
                 request.telegramUserId(),
-                new DialogState.AwaitingSlot(ref.taskId(), ref.kind()));
+                new DialogState.AwaitingSlot(ref));
         sender.send(request.chatId(), Texts.ASK_SLOT);
     }
 
@@ -149,7 +149,7 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
         String input = request.text().trim();
         if ("-".equals(input)) {
             tasks.schedule(actor, task.id(), null, null, null);
-            finish(request, actor, tasks.findVisible(actor, task.id()), awaiting.kind());
+            finish(request, actor, tasks.findVisible(actor, task.id()), awaiting.ref());
             return true;
         }
 
@@ -166,7 +166,7 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
         }
 
         apply(actor, task, parsed.get(), zone);
-        finish(request, actor, tasks.findVisible(actor, task.id()), awaiting.kind());
+        finish(request, actor, tasks.findVisible(actor, task.id()), awaiting.ref());
         return true;
     }
 
@@ -225,7 +225,7 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
         Member actor = request.requireMember();
         Task task = tasks.findVisible(actor, awaiting.taskId());
         Task updated = tasks.edit(actor, task.id(), title, task.dueAt());
-        finish(request, actor, updated, awaiting.kind());
+        finish(request, actor, updated, awaiting.ref());
         return true;
     }
 
@@ -239,7 +239,7 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
         if ("custom".equals(choice)) {
             dialogs.put(
                     request.telegramUserId(),
-                    new DialogState.AwaitingNewCustomDue(editing.taskId(), editing.kind()));
+                    new DialogState.AwaitingNewCustomDue(editing.ref()));
             sender.send(request.chatId(), Texts.ASK_CUSTOM_DUE);
             return;
         }
@@ -255,7 +255,7 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
 
         Task task = tasks.findVisible(actor, editing.taskId());
         Task updated = tasks.edit(actor, task.id(), task.title(), dueAt);
-        finish(request, actor, updated, editing.kind());
+        finish(request, actor, updated, editing.ref());
     }
 
     private boolean acceptCustomDue(BotRequest request, DialogState.AwaitingNewCustomDue awaiting) {
@@ -270,7 +270,7 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
 
         Task task = tasks.findVisible(actor, awaiting.taskId());
         Task updated = tasks.edit(actor, task.id(), task.title(), dueAt.get());
-        finish(request, actor, updated, awaiting.kind());
+        finish(request, actor, updated, awaiting.ref());
         return true;
     }
 
@@ -303,7 +303,7 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
             edit(
                     request,
                     Texts.LAST_ASSIGNEE_STAYS,
-                    TaskEditView.assignees(task, families.roster(actor), editing.kind()));
+                    TaskEditView.assignees(task, families.roster(actor), editing.ref()));
             return;
         }
 
@@ -316,7 +316,7 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
         edit(
                 request,
                 Texts.ASK_ASSIGNEES_EDIT,
-                TaskEditView.assignees(updated, families.roster(actor), editing.kind()));
+                TaskEditView.assignees(updated, families.roster(actor), editing.ref()));
     }
 
     private void confirmDeletion(BotRequest request, Member actor, TaskRef ref) {
@@ -326,7 +326,7 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
         edit(
                 request,
                 question + "\n\n" + card(task, actor),
-                TaskEditView.confirmDeletion(task, ref.kind()));
+                TaskEditView.confirmDeletion(task, ref));
     }
 
     /** Жёсткое удаление строки: история закрытых дел живёт в статусах, а удаление — «создал зря». */
@@ -349,12 +349,12 @@ public class TaskEditHandler implements CallbackHandler, DialogHandler {
         return task;
     }
 
-    private void finish(BotRequest request, Member actor, Task task, TaskListView.Kind kind) {
+    private void finish(BotRequest request, Member actor, Task task, TaskRef ref) {
         dialogs.clear(request.telegramUserId());
         sender.send(
                 request.chatId(),
                 card(task, actor),
-                TaskCardView.keyboard(task, actor.asActor(), kind));
+                TaskCardView.keyboard(task, actor.asActor(), ref));
     }
 
     private void expired(BotRequest request) {

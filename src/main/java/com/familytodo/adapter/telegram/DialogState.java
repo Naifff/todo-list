@@ -121,12 +121,22 @@ public sealed interface DialogState {
      *
      * <p>Список запоминается, чтобы после отказа вернуть человека туда, откуда он пришёл.
      */
-    record AwaitingDeclineReason(long taskId, com.familytodo.adapter.telegram.view.TaskListView.Kind kind)
-            implements DialogState {}
+    record AwaitingDeclineReason(com.familytodo.adapter.telegram.TaskRef ref)
+            implements DialogState {
+        /** Идентификатор дела живёт в самой ссылке — двух правд об одном деле здесь не заводим. */
+        public long taskId() {
+            return ref.taskId();
+        }
+    }
 
     /** Правка: ждём новое название текстом. */
-    record AwaitingNewTitle(long taskId, com.familytodo.adapter.telegram.view.TaskListView.Kind kind)
-            implements DialogState {}
+    record AwaitingNewTitle(com.familytodo.adapter.telegram.TaskRef ref)
+            implements DialogState {
+        /** Идентификатор дела живёт в самой ссылке — двух правд об одном деле здесь не заводим. */
+        public long taskId() {
+            return ref.taskId();
+        }
+    }
 
     /**
      * Правка срока или исполнителя: выбор придёт кнопкой.
@@ -134,15 +144,29 @@ public sealed interface DialogState {
      * <p>Какую задачу правим, приходится держать здесь: формат {@code prefix:action:argument} даёт
      * ровно одно поле, а нужно и id задачи, и выбранное значение.
      */
-    record EditingTask(long taskId, com.familytodo.adapter.telegram.view.TaskListView.Kind kind)
-            implements DialogState {}
+    record EditingTask(com.familytodo.adapter.telegram.TaskRef ref)
+            implements DialogState {
+        /** Идентификатор дела живёт в самой ссылке — двух правд об одном деле здесь не заводим. */
+        public long taskId() {
+            return ref.taskId();
+        }
+    }
 
     /** Правка: ждём «когда и где» текстом. */
-    record AwaitingSlot(long taskId, com.familytodo.adapter.telegram.view.TaskListView.Kind kind)
-            implements DialogState {}
+    record AwaitingSlot(com.familytodo.adapter.telegram.TaskRef ref)
+            implements DialogState {
+        /** Идентификатор дела живёт в самой ссылке — двух правд об одном деле здесь не заводим. */
+        public long taskId() {
+            return ref.taskId();
+        }
+    }
 
     /** Правка: выбрали «Своя дата» — ждём её текстом. */
-    record AwaitingNewCustomDue(
-            long taskId, com.familytodo.adapter.telegram.view.TaskListView.Kind kind)
-            implements DialogState {}
+    record AwaitingNewCustomDue(com.familytodo.adapter.telegram.TaskRef ref)
+            implements DialogState {
+        /** Идентификатор дела живёт в самой ссылке — двух правд об одном деле здесь не заводим. */
+        public long taskId() {
+            return ref.taskId();
+        }
+    }
 }

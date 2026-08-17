@@ -79,8 +79,10 @@ public final class TaskCardView {
      * Набор кнопок спрашивается у домена, а не собирается по своим условиям: два набора правил
      * неизбежно разошлись бы, и кнопка появилась бы там, где нажатие даёт отказ.
      */
-    public static InlineKeyboardMarkup keyboard(Task task, Actor actor, TaskListView.Kind kind) {
-        String argument = TaskRef.format(kind, task.id());
+    public static InlineKeyboardMarkup keyboard(Task task, Actor actor, TaskRef ref) {
+        // ⚠️ аргумент берётся у ссылки целиком, а не собирается из вида списка: у расписания
+        // он несёт ещё и горизонт, и потеряв его, «← Назад» вернул бы в список всех дел
+        String argument = ref.argument();
         InlineKeyboardRow actions = new InlineKeyboardRow();
 
         if (task.mayComplete(actor)) {
@@ -108,7 +110,7 @@ public final class TaskCardView {
                 new InlineKeyboardRow(
                         // ⚠️ назад возвращает на ту страницу, где дело лежит, а не на первую:
                         // ради этого в аргументе не буква списка, а ссылка на само дело
-                        button("← Назад", BACK, TaskRef.format(kind, task.id())));
+                        button("← Назад", BACK, argument));
         // ⚠️ Переход к правилу — единственный способ распорядиться повторением: из карточки
         // вхождения видно только один день, а «больше не повторять» живёт на серии
         if (task.isOccurrence()) {

@@ -8,6 +8,7 @@ import com.familytodo.adapter.telegram.DialogHandler;
 import com.familytodo.adapter.telegram.DialogState;
 import com.familytodo.adapter.telegram.DialogStateStore;
 import com.familytodo.adapter.telegram.TaskRef;
+import com.familytodo.adapter.telegram.view.AgendaPresenter;
 import com.familytodo.adapter.telegram.view.TaskCardView;
 import com.familytodo.adapter.telegram.view.TaskListPresenter;
 import com.familytodo.adapter.telegram.view.TaskListView;
@@ -43,6 +44,7 @@ public class TaskActionHandler implements CallbackHandler, DialogHandler {
     private final TaskService tasks;
     private final FamilyService families;
     private final TaskListPresenter lists;
+    private final AgendaPresenter agenda;
     private final DialogStateStore dialogs;
     private final BotSender sender;
     private final Clock clock;
@@ -51,12 +53,14 @@ public class TaskActionHandler implements CallbackHandler, DialogHandler {
             TaskService tasks,
             FamilyService families,
             TaskListPresenter lists,
+            AgendaPresenter agenda,
             DialogStateStore dialogs,
             BotSender sender,
             Clock clock) {
         this.tasks = tasks;
         this.families = families;
         this.lists = lists;
+        this.agenda = agenda;
         this.dialogs = dialogs;
         this.sender = sender;
         this.clock = clock;
@@ -116,24 +120,24 @@ public class TaskActionHandler implements CallbackHandler, DialogHandler {
         sender.send(
                 request.chatId(),
                 card(declined, actor),
-                TaskCardView.keyboard(declined, actor.asActor(), awaiting.kind()));
+                TaskCardView.keyboard(declined, actor.asActor(), awaiting.ref()));
         return true;
     }
 
     private void showCard(BotRequest request, Member actor, TaskRef ref) {
-        edit(request, actor, tasks.findVisible(actor, ref.taskId()), ref.kind());
+        edit(request, actor, tasks.findVisible(actor, ref.taskId()), ref);
     }
 
     private void complete(BotRequest request, Member actor, TaskRef ref) {
         Task task = tasks.complete(actor, ref.taskId());
         log.info("task {} completed by member {}", task.id(), actor.id());
-        edit(request, actor, task, ref.kind());
+        edit(request, actor, task, ref);
     }
 
     private void reopen(BotRequest request, Member actor, TaskRef ref) {
         Task task = tasks.reopen(actor, ref.taskId());
         log.info("task {} reopened by member {}", task.id(), actor.id());
-        edit(request, actor, task, ref.kind());
+        edit(request, actor, task, ref);
     }
 
     /**
@@ -148,7 +152,7 @@ public class TaskActionHandler implements CallbackHandler, DialogHandler {
 
         dialogs.put(
                 request.telegramUserId(),
-                new DialogState.AwaitingDeclineReason(task.id(), ref.kind()));
+                new DialogState.AwaitingDeclineReason(ref));
         sender.send(request.chatId(), Texts.ASK_DECLINE_REASON);
     }
 
@@ -160,6 +164,14 @@ public class TaskActionHandler implements CallbackHandler, DialogHandler {
      * открывать список, а не ошибку.
      */
     private void back(BotRequest request, Member actor, String argument) {
+        // ⚠️ из расписания возврат ведёт в расписание, а не в список всех дел: человек листал
+        // неделю, и «← Назад» обязан вернуть его туда же — с тем же горизонтом и на ту страницу
+        TaskRef fromAgenda = argument.charAt(0) == 'g' ? TaskRef.parse(argument) : null;
+        if (fromAgenda != null) {
+            backToAgenda(request, actor, fromAgenda);
+            return;
+        }
+
         TaskListView.Kind kind = kindOf(argument.charAt(0));
         Long taskId = argument.length() > 1 ? TaskRef.parse(argument).taskId() : null;
 
@@ -173,6 +185,15 @@ public class TaskActionHandler implements CallbackHandler, DialogHandler {
                             }
                         },
                         () -> lists.send(request.chatId(), actor, kind));
+    }
+
+    private void backToAgenda(BotRequest request, Member actor, TaskRef ref) {
+        request.messageId()
+                .ifPresentOrElse(
+                        id ->
+                                agenda.editAround(
+                                        request.chatId(), id, actor, ref.agendaDays(), ref.taskId()),
+                        () -> agenda.send(request.chatId(), actor, ref.agendaDays(), 0));
     }
 
     /** Листание: буква списка и номер страницы, например {@code a2}. */
@@ -204,9 +225,9 @@ public class TaskActionHandler implements CallbackHandler, DialogHandler {
     }
 
     /** Нажатие переписывает то же сообщение, а не плодит новые карточки. */
-    private void edit(BotRequest request, Member actor, Task task, TaskListView.Kind kind) {
+    private void edit(BotRequest request, Member actor, Task task, TaskRef ref) {
         String text = card(task, actor);
-        var keyboard = TaskCardView.keyboard(task, actor.asActor(), kind);
+        var keyboard = TaskCardView.keyboard(task, actor.asActor(), ref);
         request.messageId()
                 .ifPresentOrElse(
                         id -> sender.edit(request.chatId(), id, text, keyboard),

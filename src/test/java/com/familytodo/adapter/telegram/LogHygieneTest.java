@@ -141,6 +141,8 @@ class LogHygieneTest {
                         taskService,
                         familyService,
                         new TaskListPresenter(taskService, familyService, sender, clock),
+                        new com.familytodo.adapter.telegram.view.AgendaPresenter(
+                                taskService, familyService, sender, clock),
                         dialogs,
                         sender,
                         clock);

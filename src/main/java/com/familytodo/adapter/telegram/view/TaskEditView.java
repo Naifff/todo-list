@@ -29,8 +29,8 @@ public final class TaskEditView {
 
     private TaskEditView() {}
 
-    public static InlineKeyboardMarkup menu(Task task, TaskListView.Kind kind) {
-        String argument = TaskRef.format(kind, task.id());
+    public static InlineKeyboardMarkup menu(Task task, TaskRef ref) {
+        String argument = ref.argument();
         return InlineKeyboardMarkup.builder()
                 .keyboardRow(
                         new InlineKeyboardRow(
@@ -68,8 +68,7 @@ public final class TaskEditView {
      * <p>Клавиатура остаётся на экране после каждого нажатия: менять состав по одному человеку за
      * раз, возвращаясь в меню, было бы мучением при троих.
      */
-    public static InlineKeyboardMarkup assignees(
-            Task task, List<Member> family, TaskListView.Kind kind) {
+    public static InlineKeyboardMarkup assignees(Task task, List<Member> family, TaskRef ref) {
         Set<Long> current =
                 task.assignments().stream()
                         .map(Assignment::memberId)
@@ -92,13 +91,13 @@ public final class TaskEditView {
         if (!row.isEmpty()) {
             rows.add(row);
         }
-        rows.add(new InlineKeyboardRow(cardButton("← К задаче", TaskRef.format(kind, task.id()))));
+        rows.add(new InlineKeyboardRow(cardButton("← К задаче", ref.argument())));
         return InlineKeyboardMarkup.builder().keyboard(rows).build();
     }
 
     /** Удаление необратимо стирает строку — подтверждение обязательно. */
-    public static InlineKeyboardMarkup confirmDeletion(Task task, TaskListView.Kind kind) {
-        String argument = TaskRef.format(kind, task.id());
+    public static InlineKeyboardMarkup confirmDeletion(Task task, TaskRef ref) {
+        String argument = ref.argument();
         return InlineKeyboardMarkup.builder()
                 .keyboardRow(
                         new InlineKeyboardRow(

@@ -71,6 +71,8 @@ class TaskActionHandlerTest {
                         tasks,
                         familyService,
                         new TaskListPresenter(tasks, familyService, sender, clock),
+                        new com.familytodo.adapter.telegram.view.AgendaPresenter(
+                                tasks, familyService, sender, clock),
                         dialogs,
                         sender,
                         clock);
@@ -143,7 +145,7 @@ class TaskActionHandlerTest {
         }
 
         private List<String> labels(Task task, Member viewer) {
-            return TaskCardView.keyboard(task, viewer.asActor(), TaskListView.Kind.MINE)
+            return TaskCardView.keyboard(task, viewer.asActor(), new TaskRef(TaskListView.Kind.MINE, task.id()))
                     .getKeyboard()
                     .stream()
                     .flatMap(List::stream)
@@ -372,6 +374,88 @@ class TaskActionHandlerTest {
      * двадцать, остальные считались в приписке «…и ещё N» и были недостижимы вовсе — кнопок у них
      * не было. Посылка перестала быть верной, как только за ботом оказалась вся семья.
      */
+    /**
+     * Возврат ведёт туда, откуда пришли, — и расписание тут не исключение.
+     *
+     * <p>Найдено с телефона 17 августа: дело, открытое из {@code /agenda}, по «← Назад» уходило в
+     * список всех дел. Экран подменялся молча: человек листал неделю, а возвращался в другое место
+     * и другим списком.
+     */
+    @Nested
+    class BackToAgenda {
+
+        @Test
+        void aCardOpenedFromTheAgendaReturnsToTheAgenda() {
+            Task task = tasks.create(mom, kid.id(), "Вынести мусор", DUE);
+            sender.clear();
+
+            handler.handle(callback(mom), backToAgenda(7, task.id()));
+
+            assertThat(sender.edits.getFirst())
+                    .contains("Расписание · неделя")
+                    .doesNotContain(Texts.ALL_HEADER);
+        }
+
+        /** ⚠️ С тем же горизонтом: вернуть на день человека, листавшего месяц, — не туда. */
+        @Test
+        void theHorizonSurvivesTheRoundTrip() {
+            Task task = tasks.create(mom, kid.id(), "Через три недели", DUE.plusSeconds(1_209_600));
+            sender.clear();
+
+            handler.handle(callback(mom), backToAgenda(30, task.id()));
+
+            assertThat(sender.edits.getFirst()).contains("30 дней").contains("Через три недели");
+        }
+
+        /** И на ту страницу, где дело лежит: страница считается по его месту в свежей выборке. */
+        @Test
+        void itReturnsToThePageWhereTheTaskIs() {
+            List<Task> created = new ArrayList<>();
+            for (int i = 1; i <= 12; i++) {
+                created.add(
+                        tasks.create(mom, kid.id(), "Дело %02d".formatted(i), DUE.plusSeconds(i * 60L)));
+            }
+            sender.clear();
+
+            handler.handle(callback(mom), backToAgenda(7, created.getLast().id()));
+
+            assertThat(sender.edits.getFirst()).contains("стр. 2 из 2").contains("Дело 12");
+        }
+
+        /** Дела в расписании уже нет — открывается первая страница, других сведений не осталось. */
+        @Test
+        void aTaskThatIsGoneOpensTheFirstPage() {
+            Task deleted = tasks.create(mom, kid.id(), "Вынести мусор", DUE);
+            tasks.create(mom, kid.id(), "Полить цветы", DUE.plusSeconds(60));
+            tasks.delete(mom, deleted.id());
+            sender.clear();
+
+            handler.handle(callback(mom), backToAgenda(7, deleted.id()));
+
+            assertThat(sender.edits.getFirst())
+                    .contains("Расписание · неделя")
+                    .contains("Полить цветы");
+        }
+
+        /** Возврат из списка по-прежнему ведёт в список: правило меняется только для расписания. */
+        @Test
+        void listsStillReturnToTheirList() {
+            Task task = tasks.create(mom, kid.id(), "Вынести мусор", DUE);
+            sender.clear();
+
+            handler.handle(callback(mom), back(TaskListView.Kind.ALL, task.id()));
+
+            assertThat(sender.edits.getFirst())
+                    .contains(Texts.ALL_HEADER)
+                    .doesNotContain("Расписание");
+        }
+
+        private CallbackData backToAgenda(int days, long taskId) {
+            return new CallbackData(
+                    TaskCardView.PREFIX, TaskCardView.BACK, TaskRef.forAgenda(days, taskId));
+        }
+    }
+
     @Nested
     class Pages {
 

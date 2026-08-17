@@ -6,6 +6,7 @@ import com.familytodo.adapter.telegram.CallbackData;
 import com.familytodo.adapter.telegram.CallbackHandler;
 import com.familytodo.adapter.telegram.CommandHandler;
 import com.familytodo.adapter.telegram.render.CalendarHtmlRenderer;
+import com.familytodo.adapter.telegram.view.AgendaPresenter;
 import com.familytodo.adapter.telegram.view.AgendaView;
 import com.familytodo.application.FamilyService;
 import com.familytodo.application.TaskQuery;
@@ -34,6 +35,7 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
     private final TaskService tasks;
     private final FamilyService families;
     private final SchoolService school;
+    private final AgendaPresenter agenda;
     private final BotSender sender;
     private final Clock clock;
 
@@ -41,11 +43,13 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
             TaskService tasks,
             FamilyService families,
             SchoolService school,
+            AgendaPresenter agenda,
             BotSender sender,
             Clock clock) {
         this.tasks = tasks;
         this.families = families;
         this.school = school;
+        this.agenda = agenda;
         this.sender = sender;
         this.clock = clock;
     }
@@ -182,29 +186,11 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
     }
 
     private void show(BotRequest request, Member viewer, int days, int page, boolean rewrite) {
-        ZoneId zone = families.family(viewer).timezone();
-        Instant now = clock.instant();
-
-        // окно считается по календарю семьи: «три дня» это три её дня, а не 72 часа
-        LocalDate today = LocalDate.ofInstant(now, zone);
-        Instant from = today.atStartOfDay(zone).toInstant();
-        Instant to = today.plusDays(days).atStartOfDay(zone).toInstant();
-
-        List<Task> dated = tasks.find(TaskQuery.inRange(viewer, from, to));
-        List<Task> undated = tasks.find(TaskQuery.undated(viewer));
-        Map<Long, Member> byId =
-                families.roster(viewer).stream()
-                        .collect(Collectors.toMap(Member::id, Function.identity()));
-
-        AgendaView.Rendered rendered =
-                AgendaView.render(dated, undated, byId, zone, now, days, page);
-        var keyboard = AgendaView.keyboard(rendered, days);
-
         if (rewrite && request.messageId().isPresent()) {
             // переключение горизонта переписывает то же сообщение, а не плодит новые
-            sender.edit(request.chatId(), request.messageId().get(), rendered.text(), keyboard);
+            agenda.edit(request.chatId(), request.messageId().get(), viewer, days, page);
         } else {
-            sender.send(request.chatId(), rendered.text(), keyboard);
+            agenda.send(request.chatId(), viewer, days, page);
         }
     }
 }

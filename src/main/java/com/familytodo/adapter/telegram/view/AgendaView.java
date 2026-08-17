@@ -231,9 +231,10 @@ public final class AgendaView {
                                     new CallbackData(
                                                     TaskCardView.PREFIX,
                                                     TaskCardView.CARD,
-                                                    TaskRef.format(
-                                                            TaskListView.Kind.ALL,
-                                                            shown.get(i).id()))
+                                                    // ⚠️ ссылка несёт горизонт: «← Назад» из
+                                                    // карточки обязан вернуть в то же расписание,
+                                                    // а не в список всех дел
+                                                    TaskRef.forAgenda(days, shown.get(i).id()))
                                             .serialize())
                             .build());
             if (row.size() == 5) {
