@@ -52,9 +52,7 @@ public final class DigestView {
         int budget = HtmlEscaper.MESSAGE_LIMIT - FOOTER_RESERVE;
         LocalDate today = LocalDate.ofInstant(now, zone);
 
-        int shown = 0;
-        for (Map.Entry<LocalDate, List<Item>> day :
-                byDay(tasks, lessons, zone, from, horizonDays).entrySet()) {
+        for (Map.Entry<LocalDate, List<Item>> day : byDay(tasks, zone).entrySet()) {
             StringBuilder group = new StringBuilder("\n<b>").append(heading(day.getKey(), today));
             group.append("</b>\n");
 
@@ -65,70 +63,61 @@ public final class DigestView {
                 break;
             }
             out.append(group);
-            shown += day.getValue().size();
         }
 
+        appendLessons(out, lessons, recipient, byId, from, budget);
         return out.toString().stripTrailing();
     }
 
     /**
-     * Строка дайджеста: дело или урок.
+     * Расписание — <b>своя сущность</b>, а не строки среди дел.
      *
-     * <p>⚠️ Урок не превращается в {@link Task}: у него нет ни исполнителя, ни статуса. Общее здесь
-     * только «когда» — по нему всё и выстраивается.
+     * <p>⚠️ Прежде уроки стояли вперемешку с делами по времени, и довод был разумный: человек читает
+     * утро подряд — «в 07:30 портфель, в 08:30 математика». С телефона 18 августа стало видно, чего
+     * это стоит: шесть уроков среди двух дел — это список, в котором дел не найти. Дайджест отвечает
+     * «что мне сегодня делать», а урок идёт сам и в этот вопрос не входит; но знать, каким будет
+     * день, всё равно нужно — отсюда отдельный блок в конце.
+     *
+     * <p>Блок — на <b>один</b> день, тот, с которого начинается окно: уроки приходят только в
+     * дневной дайджест, см. {@code DigestJob}.
      */
-    private record Item(Task task, Lesson lesson, LocalDate day, ZoneId zone) {
+    private static void appendLessons(
+            StringBuilder out,
+            List<Lesson> lessons,
+            Member recipient,
+            Map<Long, Member> byId,
+            LocalDate day,
+            int budget) {
 
-        boolean isLesson() {
-            return lesson != null;
+        List<Lesson> ofTheDay = lessons.stream().filter(lesson -> lesson.occursOn(day)).toList();
+        if (ofTheDay.isEmpty()) {
+            // пустой заголовок «Уроки» читается как поломка расписания, а не как выходной
+            return;
         }
 
-        /** Момент, по которому строка встаёт в свой день. У дела без срока его нет. */
-        Instant moment() {
-            if (isLesson()) {
-                return lesson.startOf(day, zone);
-            }
-            return task.isScheduled() ? task.startsAt() : task.dueAt();
+        StringBuilder group = new StringBuilder("\n<b>🎒 Уроки</b>\n");
+        for (Lesson lesson : ofTheDay) {
+            group.append(lessonLine(lesson, recipient, byId)).append('\n');
+        }
+        if (out.length() + group.length() <= budget) {
+            out.append(group);
         }
     }
+
+    /** Строка дайджеста. Урок сюда не попадает: у него свой блок и своя природа. */
+    private record Item(Task task) {}
 
     /**
      * Группировка сохраняет порядок, в котором дела пришли из выборки: он уже по моменту времени.
      * Дела без срока идут последними — {@code null} как ключ, отсюда {@link LinkedHashMap}, а не
      * сортировка ключей.
      */
-    private static Map<LocalDate, List<Item>> byDay(
-            List<Task> tasks, List<Lesson> lessons, ZoneId zone, LocalDate from, int horizonDays) {
-
+    private static Map<LocalDate, List<Item>> byDay(List<Task> tasks, ZoneId zone) {
         Map<LocalDate, List<Item>> byDay = new LinkedHashMap<>();
         for (Task task : tasks) {
-            LocalDate day = day(task, zone);
-            byDay.computeIfAbsent(day, key -> new java.util.ArrayList<>())
-                    .add(new Item(task, null, day, zone));
+            byDay.computeIfAbsent(day(task, zone), key -> new java.util.ArrayList<>())
+                    .add(new Item(task));
         }
-
-        // ⚠️ уроки раскладываются по дням окна: строк на конкретный день у расписания нет, оно
-        // правило. Окно — то же, что у дел, иначе в недельном дайджесте школа кончалась бы раньше
-        for (int i = 0; i < horizonDays; i++) {
-            LocalDate day = from.plusDays(i);
-            for (Lesson lesson : lessons) {
-                if (lesson.occursOn(day)) {
-                    byDay.computeIfAbsent(day, key -> new java.util.ArrayList<>())
-                            .add(new Item(null, lesson, day, zone));
-                }
-            }
-        }
-
-        // ⚠️ порядок внутри дня — по моменту, и считается он после слияния: иначе уроки встали бы
-        // блоком, а человек читает утро подряд — «в 07:30 портфель, в 08:30 математика»
-        byDay.values()
-                .forEach(
-                        items ->
-                                items.sort(
-                                        java.util.Comparator.comparing(
-                                                Item::moment,
-                                                java.util.Comparator.nullsLast(
-                                                        java.util.Comparator.naturalOrder()))));
 
         // дни идут по возрастанию, «без срока» последним: у него ключа-даты нет вовсе
         List<LocalDate> order = new java.util.ArrayList<>(byDay.keySet());
@@ -169,9 +158,6 @@ public final class DigestView {
     private static String line(
             Item item, Member recipient, Map<Long, Member> byId, ZoneId zone, Instant now) {
 
-        if (item.isLesson()) {
-            return lessonLine(item, recipient, byId, zone);
-        }
         Task task = item.task();
         StringBuilder line = new StringBuilder("• ");
         if (task.dueAt() != null && task.dueAt().isBefore(now)) {
@@ -199,17 +185,15 @@ public final class DigestView {
      * <p>Родителю имя обязательно: своих уроков у него нет, а «математика в 08:30» без имени в семье
      * с двумя школьниками не отвечает ни на что.
      */
-    private static String lessonLine(
-            Item item, Member recipient, Map<Long, Member> byId, ZoneId zone) {
-
-        Lesson lesson = item.lesson();
+    private static String lessonLine(Lesson lesson, Member recipient, Map<Long, Member> byId) {
+        // время впереди: внутри блока читают расписание, а в нём главное «во сколько»
         StringBuilder line =
-                new StringBuilder("• 🎒 ")
-                        .append(HtmlEscaper.escape(lesson.subject()))
-                        .append(" · ")
+                new StringBuilder("• ")
                         .append(lesson.startsAt().format(TIME))
                         .append('–')
-                        .append(lesson.endsAt().format(TIME));
+                        .append(lesson.endsAt().format(TIME))
+                        .append("  ")
+                        .append(HtmlEscaper.escape(lesson.subject()));
         if (lesson.memberId() != recipient.id()) {
             line.append(" · ").append(AssigneeNames.of(byId, lesson.memberId()));
         }

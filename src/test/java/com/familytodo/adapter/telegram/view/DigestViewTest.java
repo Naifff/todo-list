@@ -182,12 +182,20 @@ class DigestViewTest {
     @org.junit.jupiter.api.Nested
     class Lessons {
 
+        /**
+         * ⚠️ Уроки стоят <b>своим блоком после дел</b>, а не вперемешку с ними по времени.
+         *
+         * <p>Прежде было наоборот, и довод звучал разумно: человек читает утро подряд — «в 07:30
+         * портфель, в 08:30 математика». С телефона 18 августа выяснилось, чего это стоит: шесть
+         * уроков среди двух дел — это список, в котором дела не найти. У школьного дня свой ритм,
+         * и он не про «что мне сделать».
+         */
         @org.junit.jupiter.api.Test
-        void aLessonBecomesALineOrderedByItsTime() {
+        void lessonsStandInTheirOwnBlockAfterTheTasks() {
             String text =
                     DigestView.render(
                             "Дела на сегодня",
-                            List.of(due(mom, "Собрать портфель", TODAY, LocalTime.of(7, 30))),
+                            List.of(due(mom, "Вынести мусор", TODAY, LocalTime.of(19, 0))),
                             List.of(lesson(kid, "Математика", LocalTime.of(8, 30))),
                             kid,
                             byId,
@@ -196,8 +204,27 @@ class DigestViewTest {
                             1,
                             NOW);
 
-            assertThat(text).contains("Математика").contains("08:30–09:15");
-            assertThat(text.indexOf("портфель")).isLessThan(text.indexOf("Математика"));
+            assertThat(text).contains("Уроки").contains("Математика").contains("08:30–09:15");
+            // урок раньше по времени, но ниже по сообщению: это отдельная сущность, а не дело
+            assertThat(text.indexOf("мусор")).isLessThan(text.indexOf("Математика"));
+        }
+
+        /** Уроков нет — блока тоже нет: пустой заголовок «Уроки» читается как поломка. */
+        @org.junit.jupiter.api.Test
+        void withoutLessonsThereIsNoBlock() {
+            String text =
+                    DigestView.render(
+                            "Дела на сегодня",
+                            List.of(due(mom, "Вынести мусор", TODAY, LocalTime.of(19, 0))),
+                            List.of(),
+                            kid,
+                            byId,
+                            MOSCOW,
+                            TODAY,
+                            1,
+                            NOW);
+
+            assertThat(text).doesNotContain("Уроки");
         }
 
         /** Родителю имя обязательно: своих уроков у него нет, а школьников в семье бывает двое. */

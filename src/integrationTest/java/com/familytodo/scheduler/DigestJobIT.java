@@ -241,6 +241,27 @@ class DigestJobIT extends AbstractSqliteIT {
             assertThat(notifier.lessonsFor(kid.id(), 1)).isEqualTo(1);
         }
 
+        /**
+         * ⚠️ Уроки приходят <b>только в дневном</b> дайджесте — то же правило, что у дел без даты, и
+         * по той же причине. Найдено с телефона 18 августа: расписание ребёнка на сегодня приезжало
+         * дважды за одно утро, в дневном списке и в трёхдневном.
+         */
+        @Test
+        void lessonsComeOnlyInTheDailyDigest() {
+            Family family = withHorizon("Румянцевы", 7);
+            Member mom = join(family, 100000001L, "Мама", Role.PARENT);
+            Member kid = join(family, 512034877L, "Петя", Role.CHILD);
+            school.replace(mom, kid.id(), "Пт 08:30 Математика");
+            dated(family, kid, "Вынести мусор", "2026-08-07T16:00:00Z");
+
+            clock.set(DIGEST_MOMENT);
+            job.run();
+
+            assertThat(notifier.lessonsFor(kid.id(), 1)).isEqualTo(1);
+            assertThat(notifier.sizeFor(kid.id(), 7)).isEqualTo(1);
+            assertThat(notifier.lessonsFor(kid.id(), 7)).isZero();
+        }
+
         /** Дела без даты тоже персональные. */
         @Test
         void undatedTasksAreAlsoPersonal() {

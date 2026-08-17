@@ -120,7 +120,7 @@ public class DigestJob {
      * хлеб» не обещано ни на какой день, но из списка от этого не исчезает.
      */
     private List<Task> withinHorizon(
-            Member recipient, Family family, Instant now, int days, boolean includeUndated) {
+            Member recipient, Family family, Instant now, int days, boolean daily) {
         LocalDate today = family.today(now);
         // ⚠️ окно начинается с сегодняшнего утра, а не «от начала времён». Событие, которое
         // прошло, сделать уже нельзя: вчерашнее «отпраздновать день рождения» приходило сегодня
@@ -130,7 +130,7 @@ public class DigestJob {
 
         List<Task> visible =
                 new ArrayList<>(tasks.find(TaskQuery.digestFor(recipient, since, until)));
-        if (includeUndated) {
+        if (daily) {
             // ⚠️ только в дневной: иначе «купить хлеб» приходит дважды за одно утро, и человек
             // перестаёт читать оба списка
             visible.addAll(tasks.find(TaskQuery.undatedFor(recipient)));
@@ -144,14 +144,16 @@ public class DigestJob {
             Family family,
             Instant now,
             int days,
-            boolean includeUndated) {
-        List<Task> visible = withinHorizon(recipient, family, now, days, includeUndated);
-        // ⚠️ уроки, как и дела, строго свои. Прежде здесь стояло правило видимости — «родителю
-        // полезно знать, во сколько забирать ребёнка», — и на недельном горизонте это давало
-        // родителю тридцать строк уроков в одном сообщении. Дайджест отвечает на «что мне сегодня
-        // делать», и урок ребёнка на этот вопрос не отвечает; расписание ребёнка целиком
-        // показывает /school
-        List<Lesson> lessons = school.own(recipient);
+            boolean daily) {
+        List<Task> visible = withinHorizon(recipient, family, now, days, daily);
+        // ⚠️ уроки идут только в дневной дайджест — то же правило, что у дел без даты, и по той же
+        // причине: иначе расписание на сегодня приходит дважды за одно утро, в дневном списке и в
+        // недельном, и человек перестаёт читать оба.
+        //
+        // ⚠️ И только свои: прежде здесь стояло правило видимости — «родителю полезно знать, во
+        // сколько забирать ребёнка», — а на недельном горизонте это давало родителю тридцать строк
+        // уроков в одном сообщении. Расписание ребёнка целиком показывает /school
+        List<Lesson> lessons = daily ? school.own(recipient) : List.of();
 
         if (visible.isEmpty() && lessons.isEmpty()) {
             // пустой дайджест не отправляем: сообщение «дел нет» это шум, а не польза
