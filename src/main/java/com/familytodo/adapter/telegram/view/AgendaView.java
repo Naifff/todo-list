@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
@@ -74,9 +76,39 @@ public final class AgendaView {
 
     private static final int FOOTER_RESERVE = 60;
 
+    /** Аргумент кнопки со страницей: {@code 7p2} — неделя, третья страница. */
+    private static final Pattern PAGED = Pattern.compile("(\\d{1,3})p(\\d{1,3})");
+
     private AgendaView() {}
 
-    public record Rendered(String text, List<Task> shown) {}
+    /**
+     * @param shown дела этой страницы — по ним строятся номерные кнопки
+     * @param from номер первого дела страницы в общем списке, с нуля
+     * @param page номер страницы с нуля, {@code pages} — сколько их всего
+     */
+    public record Rendered(String text, List<Task> shown, int from, int page, int pages) {}
+
+    /**
+     * Аргумент кнопки: горизонт и страница в одном поле.
+     *
+     * <p>Отдельного действия для страницы нет намеренно — {@link #DAYS} принимает обе формы, и
+     * старая кнопка из одного числа (страница нулевая) продолжает работать. Кнопки в чате живут
+     * вечно, а сообщение, отправленное до появления страниц, обязано открывать расписание.
+     */
+    public static String argument(int days, int page) {
+        return page == 0 ? Integer.toString(days) : days + "p" + page;
+    }
+
+    public static int horizonOf(String argument) {
+        Matcher paged = PAGED.matcher(argument);
+        return Integer.parseInt(paged.matches() ? paged.group(1) : argument);
+    }
+
+    /** Страница из недоверенного аргумента. Всё, что не похоже на страницу, — первая. */
+    public static int pageOf(String argument) {
+        Matcher paged = PAGED.matcher(argument);
+        return paged.matches() ? Integer.parseInt(paged.group(2)) : 0;
+    }
 
     public static Rendered render(
             List<Task> dated,
@@ -84,46 +116,70 @@ public final class AgendaView {
             Map<Long, Member> byId,
             ZoneId zone,
             Instant now,
-            int days) {
+            int days,
+            int page) {
 
-        StringBuilder out = new StringBuilder("<b>").append(header(days)).append("</b>\n");
+        // ⚠️ дела без срока идут теми же страницами и той же нумерацией. Прежде они нумеровались,
+        // а датированные нет — в одном сообщении жили два правила, и номер на кнопке не с чем было
+        // сличить глазами
+        List<Task> all = new ArrayList<>(dated);
+        all.addAll(undated);
+        if (all.isEmpty()) {
+            return new Rendered(Texts.AGENDA_EMPTY, List.of(), 0, 0, 1);
+        }
+
+        int pages = TaskListView.pagesFor(all.size());
+        int current = Math.clamp(page, 0, pages - 1);
+        int from = current * TaskListView.PAGE_SIZE;
+        int to = Math.min(all.size(), from + TaskListView.PAGE_SIZE);
+
+        StringBuilder out = new StringBuilder("<b>").append(header(days));
+        if (pages > 1) {
+            out.append(" · стр. ").append(current + 1).append(" из ").append(pages);
+        }
+        out.append("</b>\n");
+
         int budget = HtmlEscaper.MESSAGE_LIMIT - FOOTER_RESERVE;
         List<Task> shown = new ArrayList<>();
-
         LocalDate currentDay = null;
-        for (Task task : dated) {
-            ZonedDateTime moment = momentOf(task).atZone(zone);
-            LocalDate day = moment.toLocalDate();
+        boolean undatedHeaderWritten = false;
 
+        for (int i = from; i < to; i++) {
+            Task task = all.get(i);
             StringBuilder chunk = new StringBuilder();
-            if (!day.equals(currentDay)) {
-                chunk.append('\n').append(dayHeader(day, LocalDate.ofInstant(now, zone)));
-            }
-            chunk.append('\n').append(line(task, byId, zone, now));
 
+            if (momentOf(task) == null) {
+                if (!undatedHeaderWritten) {
+                    chunk.append("\n\n<b>Без срока</b>");
+                }
+                chunk.append('\n').append(i + 1).append(". ").append(HtmlEscaper.escape(task.title()));
+            } else {
+                LocalDate day = momentOf(task).atZone(zone).toLocalDate();
+                if (!day.equals(currentDay)) {
+                    chunk.append('\n').append(dayHeader(day, LocalDate.ofInstant(now, zone)));
+                }
+                chunk.append('\n').append(i + 1).append(". ").append(line(task, byId, zone, now));
+            }
+
+            // страховка: при десяти строках бюджет кончиться не может, но обрезанная страница
+            // означала бы недостижимые дела — ровно то, ради чего страницы и заводились
             if (out.length() + chunk.length() > budget) {
                 break;
             }
             out.append(chunk);
-            currentDay = day;
+            if (momentOf(task) == null) {
+                undatedHeaderWritten = true;
+            } else {
+                currentDay = momentOf(task).atZone(zone).toLocalDate();
+            }
             shown.add(task);
         }
 
-        if (shown.isEmpty() && undated.isEmpty()) {
-            return new Rendered(Texts.AGENDA_EMPTY, List.of());
-        }
-
-        appendUndated(out, undated, byId, shown, budget);
-
-        int hidden = dated.size() + undated.size() - shown.size();
-        if (hidden > 0) {
-            out.append("\n\n…и ещё ").append(hidden);
-        }
-        return new Rendered(out.toString(), shown);
+        return new Rendered(out.toString(), shown, from, current, pages);
     }
 
     /** Кнопки под расписанием: сначала переключение горизонта, потом номера дел. */
-    public static InlineKeyboardMarkup keyboard(List<Task> shown, int days) {
+    public static InlineKeyboardMarkup keyboard(Rendered rendered, int days) {
         List<InlineKeyboardRow> rows = new ArrayList<>();
 
         InlineKeyboardRow horizons = new InlineKeyboardRow();
@@ -164,10 +220,13 @@ public final class AgendaView {
         }
 
         InlineKeyboardRow row = new InlineKeyboardRow();
+        List<Task> shown = rendered.shown();
         for (int i = 0; i < shown.size(); i++) {
+            // ⚠️ подпись повторяет номер строки, и номер сквозной: «1» на второй странице
+            // отправляла бы искать первое дело списка
             row.add(
                     InlineKeyboardButton.builder()
-                            .text(Integer.toString(i + 1))
+                            .text(Integer.toString(rendered.from() + i + 1))
                             .callbackData(
                                     new CallbackData(
                                                     TaskCardView.PREFIX,
@@ -185,33 +244,27 @@ public final class AgendaView {
         if (!row.isEmpty()) {
             rows.add(row);
         }
+
+        // ⚠️ стрелка появляется, только если ей есть куда вести: кнопка, которая ничего не делает,
+        // читается как сломанная — ответить «дальше некуда» отсюда нечем
+        InlineKeyboardRow nav = new InlineKeyboardRow();
+        if (rendered.page() > 0) {
+            nav.add(pageButton("◀ Назад", days, rendered.page() - 1));
+        }
+        if (rendered.page() < rendered.pages() - 1) {
+            nav.add(pageButton("Вперёд ▶", days, rendered.page() + 1));
+        }
+        if (!nav.isEmpty()) {
+            rows.add(nav);
+        }
         return InlineKeyboardMarkup.builder().keyboard(rows).build();
     }
 
-    private static void appendUndated(
-            StringBuilder out,
-            List<Task> undated,
-            Map<Long, Member> byId,
-            List<Task> shown,
-            int budget) {
-
-        if (undated.isEmpty()) {
-            return;
-        }
-        String header = "\n\n<b>Без срока</b>";
-        if (out.length() + header.length() > budget) {
-            return;
-        }
-        out.append(header);
-
-        for (Task task : undated) {
-            String chunk = "\n" + (shown.size() + 1) + ". " + HtmlEscaper.escape(task.title());
-            if (out.length() + chunk.length() > budget) {
-                return;
-            }
-            out.append(chunk);
-            shown.add(task);
-        }
+    private static InlineKeyboardButton pageButton(String label, int days, int page) {
+        return InlineKeyboardButton.builder()
+                .text(label)
+                .callbackData(new CallbackData(PREFIX, DAYS, argument(days, page)).serialize())
+                .build();
     }
 
     private static String line(Task task, Map<Long, Member> byId, ZoneId zone, Instant now) {
@@ -244,6 +297,7 @@ public final class AgendaView {
         return "\n<b>" + prefix + day.format(DAY) + ", " + weekday + "</b>";
     }
 
+    /** Момент дела: у события начало, у срока — срок. У дела без даты его нет вовсе. */
     private static Instant momentOf(Task task) {
         return task.isScheduled() ? task.startsAt() : task.dueAt();
     }

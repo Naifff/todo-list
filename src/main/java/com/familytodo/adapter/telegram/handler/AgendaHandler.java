@@ -67,7 +67,7 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
 
     @Override
     public void handle(BotRequest request) {
-        show(request, request.requireMember(), DEFAULT_DAYS, false);
+        show(request, request.requireMember(), DEFAULT_DAYS, 0, false);
     }
 
     @Override
@@ -82,7 +82,10 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
         if (!grid && !list && !past && !AgendaView.DAYS.equals(data.action())) {
             return;
         }
-        int days = (int) data.longArgument();
+        // ⚠️ у переключателя горизонта аргумент несёт ещё и страницу («7p2»), у остальных действий
+        // это по-прежнему одно число. Старая кнопка из одного числа открывает первую страницу
+        int days = AgendaView.horizonOf(data.argument());
+        int page = AgendaView.pageOf(data.argument());
         // горизонт приходит от клиента: чужое число не должно превращаться в запрос на год.
         // У истории свой набор — «за день» назад не предлагается, значит и принимать нечего
         List<Integer> allowed = past ? AgendaView.PAST_HORIZONS : AgendaView.HORIZONS;
@@ -98,7 +101,7 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
             sendPage(request, request.requireMember(), days, list);
             return;
         }
-        show(request, request.requireMember(), days, true);
+        show(request, request.requireMember(), days, page, true);
     }
 
     /**
@@ -178,7 +181,7 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
                 AgendaView.historyCaption(days));
     }
 
-    private void show(BotRequest request, Member viewer, int days, boolean rewrite) {
+    private void show(BotRequest request, Member viewer, int days, int page, boolean rewrite) {
         ZoneId zone = families.family(viewer).timezone();
         Instant now = clock.instant();
 
@@ -194,8 +197,8 @@ public class AgendaHandler implements CommandHandler, CallbackHandler {
                         .collect(Collectors.toMap(Member::id, Function.identity()));
 
         AgendaView.Rendered rendered =
-                AgendaView.render(dated, undated, byId, zone, now, days);
-        var keyboard = AgendaView.keyboard(rendered.shown(), days);
+                AgendaView.render(dated, undated, byId, zone, now, days, page);
+        var keyboard = AgendaView.keyboard(rendered, days);
 
         if (rewrite && request.messageId().isPresent()) {
             // переключение горизонта переписывает то же сообщение, а не плодит новые

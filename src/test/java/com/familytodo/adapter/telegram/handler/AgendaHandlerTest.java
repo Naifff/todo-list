@@ -232,7 +232,9 @@ class AgendaHandlerTest {
 
             assertThat(sender.edits.getFirst())
                     .hasSizeLessThanOrEqualTo(HtmlEscaper.MESSAGE_LIMIT);
-            assertThat(sender.edits.getFirst()).contains("…и ещё");
+            // ⚠️ приписки «…и ещё N» здесь больше нет: она была тупиком — у этих дел не было
+            // кнопок, то есть добраться до них было нельзя вовсе. То же решение, что в списках
+            assertThat(sender.edits.getFirst()).doesNotContain("…и ещё").contains("стр. 1 из");
         }
 
         @Test
@@ -415,6 +417,156 @@ class AgendaHandlerTest {
      * Второй вид того же файла — списком. Занял место картинки: у сетки день упирается в ось и её
      * границы, у списка границ нет вовсе, и выбирает человек.
      */
+    /**
+     * Расписание листается страницами и нумеруется — ровно как {@code /my} и {@code /all}.
+     *
+     * <p>Найдено с телефона 17 августа: у строк расписания номеров не было вовсе, а под сообщением
+     * стояли кнопки «1»…«12». Номер на кнопке не значил ничего — глазами его было не с чем сличить.
+     * Дела без срока при этом нумеровались: одно сообщение жило по двум правилам сразу.
+     */
+    @Nested
+    class Pages {
+
+        @Test
+        void everyLineCarriesTheNumberOfItsButton() {
+            task("Первое", "2026-08-07T16:00:00Z");
+            task("Второе", "2026-08-08T16:00:00Z");
+            sender.clear();
+
+            handler.handle(callback(mom), horizon(7));
+
+            assertThat(sender.edits.getFirst())
+                    .contains("1. к 19:00  Первое")
+                    .contains("2. к 19:00  Второе");
+            assertThat(numberButtons()).containsExactly("1", "2");
+        }
+
+        @Test
+        void aPageHoldsTenAndTheRestMovesToTheNextOne() {
+            for (int i = 0; i < 12; i++) {
+                tasks.create(mom, kid.id(), "Дело " + i, Instant.parse("2026-08-08T16:00:00Z"));
+            }
+            sender.clear();
+
+            handler.handle(callback(mom), horizon(7));
+
+            assertThat(sender.edits.getFirst()).contains("стр. 1 из 2");
+            assertThat(numberButtons()).hasSize(10);
+            assertThat(buttonLabels()).contains("Вперёд ▶").doesNotContain("◀ Назад");
+        }
+
+        /** ⚠️ Нумерация сквозная: «1» на второй странице отправляла бы искать первое дело. */
+        @Test
+        void theSecondPageContinuesTheNumbering() {
+            for (int i = 0; i < 12; i++) {
+                tasks.create(mom, kid.id(), "Дело " + i, Instant.parse("2026-08-08T16:00:00Z"));
+            }
+            sender.clear();
+
+            handler.handle(callback(mom), horizonPage(7, 1));
+
+            assertThat(sender.edits.getFirst()).contains("стр. 2 из 2").contains("11. ");
+            assertThat(numberButtons()).containsExactly("11", "12");
+            assertThat(buttonLabels()).contains("◀ Назад").doesNotContain("Вперёд ▶");
+        }
+
+        /** Дела без срока — те же номера, они и раньше нумеровались. */
+        @Test
+        void undatedTasksContinueTheSameNumbering() {
+            task("Датированное", "2026-08-07T16:00:00Z");
+            tasks.create(mom, kid.id(), "Без даты", (Instant) null);
+            sender.clear();
+
+            handler.handle(callback(mom), horizon(7));
+
+            assertThat(sender.edits.getFirst())
+                    .contains("1. к 19:00  Датированное")
+                    .contains("2. Без даты");
+            assertThat(numberButtons()).containsExactly("1", "2");
+        }
+
+        /** Смена горизонта возвращает на первую страницу: иначе «3 дня» открывались бы пустыми. */
+        @Test
+        void switchingTheHorizonStartsFromTheFirstPage() {
+            for (int i = 0; i < 12; i++) {
+                tasks.create(mom, kid.id(), "Дело " + i, Instant.parse("2026-08-08T16:00:00Z"));
+            }
+            handler.handle(callback(mom), horizonPage(7, 1));
+            sender.clear();
+
+            handler.handle(callback(mom), horizon(7));
+
+            assertThat(sender.edits.getFirst()).contains("стр. 1 из 2");
+        }
+
+        /**
+         * ⚠️ Кнопки живут в чате вечно: сообщение, отправленное до появления страниц, несёт
+         * аргумент из одного числа и обязано открывать расписание, а не ошибку.
+         */
+        @Test
+        void anOldButtonWithoutAPageStillWorks() {
+            task("Дело", "2026-08-08T16:00:00Z");
+            sender.clear();
+
+            handler.handle(callback(mom), horizon(7));
+
+            assertThat(sender.edits.getFirst()).contains("Дело");
+        }
+
+        @Test
+        void aForgedPageIsNotAnError() {
+            task("Дело", "2026-08-08T16:00:00Z");
+            sender.clear();
+
+            handler.handle(callback(mom), horizonPage(7, 99));
+
+            assertThat(sender.edits.getFirst()).contains("Дело");
+        }
+
+        /** Страница обязана помещаться при любых заголовках — иначе часть дел недостижима. */
+        @Test
+        void aFullPageOfTheLongestTitlesStillFits() {
+            for (int i = 0; i < 30; i++) {
+                Task longest =
+                        tasks.create(
+                                mom, kid.id(), "я".repeat(200), Instant.parse("2026-08-08T16:00:00Z"));
+                // худший случай целиком: к предельному заголовку добавляется предельное место
+                tasks.schedule(
+                        mom,
+                        longest.id(),
+                        Instant.parse("2026-08-08T16:00:00Z"),
+                        Instant.parse("2026-08-08T17:00:00Z"),
+                        "ю".repeat(100));
+            }
+            sender.clear();
+
+            handler.handle(callback(mom), horizon(7));
+
+            assertThat(sender.edits.getFirst())
+                    .hasSizeLessThanOrEqualTo(HtmlEscaper.MESSAGE_LIMIT);
+            assertThat(numberButtons()).hasSize(10);
+        }
+
+        private List<String> numberButtons() {
+            List<String> numbers = new ArrayList<>();
+            for (String label : buttonLabels()) {
+                if (label.chars().allMatch(Character::isDigit)) {
+                    numbers.add(label);
+                }
+            }
+            return numbers;
+        }
+
+        private List<String> buttonLabels() {
+            List<String> labels = new ArrayList<>();
+            sender.markups
+                    .getLast()
+                    .getKeyboard()
+                    .forEach(row -> row.forEach(button -> labels.add(button.getText())));
+            return labels;
+        }
+    }
+
     /**
      * ⚠️ Уроки — <b>исключение</b> из правила «родитель видит календарь семьи», и исключение
      * сознательное. Найдено с телефона 16 августа: у ребёнка тридцать уроков в неделю, и в месячной
@@ -748,6 +900,10 @@ class AgendaHandlerTest {
 
     private static CallbackData horizon(int days) {
         return new CallbackData(AgendaView.PREFIX, AgendaView.DAYS, Integer.toString(days));
+    }
+
+    private static CallbackData horizonPage(int days, int page) {
+        return new CallbackData(AgendaView.PREFIX, AgendaView.DAYS, AgendaView.argument(days, page));
     }
 
     private static BotRequest command(Member member) {
