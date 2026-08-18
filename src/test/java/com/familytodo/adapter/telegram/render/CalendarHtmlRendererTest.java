@@ -897,6 +897,69 @@ class CalendarHtmlRendererTest {
                 List.of(new Assignment(11L, Role.CHILD, null, null)));
     }
 
+    /**
+     * Палитра пастельная, а текст на плашке — тёмный, и это <b>связка</b>: поменять одно и забыть
+     * второе значит получить белым по светло-голубому или чёрным по густо-синему.
+     *
+     * <p>Проверяем не оттенок, а следствие — читаемость. Порог 4.5:1 — тот же, что у WCAG AA для
+     * обычного текста; в плашке он мелкий, и запас тут не роскошь.
+     */
+    @Nested
+    class PlateContrast {
+
+        @Test
+        void everyMemberColourIsReadableUnderThePlateInk() {
+            String css = new String(
+                    CalendarHtmlRenderer.render(
+                            List.of(), List.of(), List.of(), Map.of(), MOSCOW, MONDAY, 1, MONDAY),
+                    StandardCharsets.UTF_8);
+            String ink = value(css, "--on-plate");
+
+            for (com.familytodo.domain.MemberColor color : com.familytodo.domain.MemberColor.values()) {
+                assertThat(contrast(color.hex(), ink))
+                        .describedAs("контраст текста на плашке %s", color.title())
+                        .isGreaterThanOrEqualTo(4.5);
+            }
+        }
+
+        /** Закрытая плашка серая — но теми же чернилами, и читаться обязана так же. */
+        @Test
+        void theClosedPlateIsReadableToo() {
+            String css = new String(
+                    CalendarHtmlRenderer.render(
+                            List.of(), List.of(), List.of(), Map.of(), MOSCOW, MONDAY, 1, MONDAY),
+                    StandardCharsets.UTF_8);
+
+            assertThat(contrast(value(css, "--plate-done"), value(css, "--on-plate")))
+                    .isGreaterThanOrEqualTo(4.5);
+            assertThat(contrast(value(css, "--plate-none"), value(css, "--on-plate")))
+                    .isGreaterThanOrEqualTo(4.5);
+        }
+
+        private String value(String css, String name) {
+            java.util.regex.Matcher m =
+                    java.util.regex.Pattern.compile(name + ":\\s*(#[0-9a-fA-F]{6})").matcher(css);
+            assertThat(m.find()).describedAs("в стиле нет %s", name).isTrue();
+            return m.group(1);
+        }
+
+        /** WCAG: (L1 + 0.05) / (L2 + 0.05) по относительной яркости. */
+        private double contrast(String first, String second) {
+            double a = luminance(first);
+            double b = luminance(second);
+            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+        }
+
+        private double luminance(String hex) {
+            double[] channel = new double[3];
+            for (int i = 0; i < 3; i++) {
+                double raw = Integer.parseInt(hex.substring(1 + i * 2, 3 + i * 2), 16) / 255.0;
+                channel[i] = raw <= 0.03928 ? raw / 12.92 : Math.pow((raw + 0.055) / 1.055, 2.4);
+            }
+            return 0.2126 * channel[0] + 0.7152 * channel[1] + 0.0722 * channel[2];
+        }
+    }
+
     /** Форма с явными исполнителями: нужна там, где проверяется дело на нескольких. */
     private Task task(
             String title,

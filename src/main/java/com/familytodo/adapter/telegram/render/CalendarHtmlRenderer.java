@@ -725,6 +725,16 @@ public final class CalendarHtmlRenderer {
                  --slot: #fafafa;
                  --accent: #f26b21;
                  --on-accent: #ffffff;
+                 /* ⚠️ Текст на плашке тёмный, а не белый: заливка пастельная и в тёмной теме
+                    остаётся светлой, поэтому цвет чернил один на обе схемы. Белым по
+                    светло-голубому не читается ничего. */
+                 --on-plate: #22252a;
+                 /* Закрытая плашка — бледно-серая, чтобы теми же чернилами и читалась, и
+                    отличалась от живого дела с одного взгляда */
+                 --plate-done: #e3e5e9;
+                 /* Плашка без цвета участника: серо-голубая, а не оранжевый акцент —
+                    акцент кричит громче любого цвета из палитры */
+                 --plate-none: #dfe4ec;
                  --col: 150px;
                  --hour: 46px;
                }
@@ -806,12 +816,12 @@ public final class CalendarHtmlRenderer {
                     раздел читался как два соседних блока, а это в сетке означает пересекающиеся
                     дела. Держать заливку отдельно от --own обязательно: тот же --own уходит в
                     border-left, где градиент невалиден и правило отбрасывается молча */
-                 background: var(--ribbon, var(--own, var(--accent)));
-                 color: var(--on-accent);
+                 background: var(--ribbon, var(--own, var(--plate-none)));
+                 color: var(--on-plate);
                  font-size: 11px;
                  line-height: 1.25;
                }
-               .block.done, .block.declined { background: var(--muted); }
+               .block.done, .block.declined { background: var(--plate-done); }
                .block.done .title { text-decoration: line-through; }
                .time { font-variant-numeric: tabular-nums; opacity: .85; }
                .title { font-weight: 600; overflow-wrap: anywhere; }
@@ -837,15 +847,15 @@ public final class CalendarHtmlRenderer {
                .cell.today .date { color: var(--accent); font-weight: 700; }
                .date { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
                .chip {
-                 background: var(--ribbon, var(--own, var(--accent)));
-                 color: var(--on-accent);
+                 background: var(--ribbon, var(--own, var(--plate-none)));
+                 color: var(--on-plate);
                  border-radius: 4px;
                  padding: 2px 4px;
                  margin-bottom: 2px;
                  font-size: 11px;
                  overflow-wrap: anywhere;
                }
-               .chip.done, .chip.declined { background: var(--muted); }
+               .chip.done, .chip.declined { background: var(--plate-done); }
                .at { font-variant-numeric: tabular-nums; opacity: .85; }
                .day { margin-bottom: 18px; }
                h2 {
@@ -868,14 +878,16 @@ public final class CalendarHtmlRenderer {
                   урок. Полупрозрачная заливка того же цвета плюс пунктирная рамка читаются как
                   «здесь занято, но делать нечего»; сплошная не давала бы отличить школу от
                   просьбы, а серая потеряла бы ребёнка. */
+               /* ⚠️ Доля цвета выросла с 26% до 45%, а рамка стала темнее самого цвета: на
+                  насыщенной заливке четверти хватало, на пастельной урок пропадал со страницы. */
                .block.lesson, .chip.lesson {
-                 background: color-mix(in srgb, var(--own, var(--accent)) 26%, transparent);
+                 background: color-mix(in srgb, var(--own, var(--plate-none)) 45%, transparent);
                  color: var(--fg);
-                 border: 1px dashed var(--own, var(--accent));
+                 border: 1px dashed color-mix(in srgb, var(--own, var(--plate-none)) 55%, var(--fg));
                }
                .loose.lesson {
                  border-left-style: dashed;
-                 background: color-mix(in srgb, var(--own, var(--accent)) 12%, var(--slot));
+                 background: color-mix(in srgb, var(--own, var(--plate-none)) 22%, var(--slot));
                }
                </style>
                """;
