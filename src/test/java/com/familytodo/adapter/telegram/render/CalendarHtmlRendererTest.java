@@ -904,6 +904,78 @@ class CalendarHtmlRendererTest {
      * <p>Проверяем не оттенок, а следствие — читаемость. Порог 4.5:1 — тот же, что у WCAG AA для
      * обычного текста; в плашке он мелкий, и запас тут не роскошь.
      */
+    /**
+     * Дело на нескольких: блок делится поровну между исполнителями.
+     *
+     * <p>⚠️ Направление менялось дважды — лента поверху, полосы сверху вниз, теперь слева направо.
+     * Тест держит не вкус, а два свойства: доля у каждого исполнителя равная и полос ровно столько,
+     * сколько людей. Направление проверяется заодно, потому что менялось оно молча.
+     */
+    @Nested
+    class SharedPlate {
+
+        @Test
+        void theFillIsSplitEquallyLeftToRight() {
+            Member mom = member(1L, "Мама", Role.PARENT);
+            Member dad = member(2L, "Папа", Role.PARENT);
+            Map<Long, Member> byId = Map.of(mom.id(), mom, dad.id(), dad);
+
+            Task shared =
+                    task(
+                            "Постирать рюкзаки",
+                            null,
+                            MONDAY.atTime(16, 0).atZone(MOSCOW).toInstant(),
+                            MONDAY.atTime(17, 0).atZone(MOSCOW).toInstant(),
+                            null,
+                            TaskStatus.OPEN,
+                            null,
+                            List.of(
+                                    new Assignment(mom.id(), Role.PARENT, null, null),
+                                    new Assignment(dad.id(), Role.PARENT, null, null)));
+
+            String html =
+                    new String(
+                            CalendarHtmlRenderer.render(
+                                    List.of(shared), List.of(), List.of(), byId, MOSCOW, MONDAY, 1,
+                                    MONDAY),
+                            StandardCharsets.UTF_8);
+
+            assertThat(html).contains("--ribbon:linear-gradient(to right");
+            assertThat(html)
+                    .contains(mom.color().hex() + " 0% 50%")
+                    .contains(dad.color().hex() + " 50% 100%");
+        }
+
+        @Test
+        void aSingleAssigneeGetsNoRibbonAtAll() {
+            Member mom = member(1L, "Мама", Role.PARENT);
+            Task alone =
+                    task(
+                            "Вынести мусор",
+                            null,
+                            MONDAY.atTime(16, 0).atZone(MOSCOW).toInstant(),
+                            MONDAY.atTime(17, 0).atZone(MOSCOW).toInstant(),
+                            null,
+                            TaskStatus.OPEN,
+                            null,
+                            List.of(new Assignment(mom.id(), Role.PARENT, null, null)));
+
+            String html =
+                    new String(
+                            CalendarHtmlRenderer.render(
+                                    List.of(alone), List.of(), List.of(), Map.of(mom.id(), mom),
+                                    MOSCOW, MONDAY, 1, MONDAY),
+                            StandardCharsets.UTF_8);
+
+            // ⚠️ именно объявление: слово --ribbon есть и в самом стиле, в var(--ribbon, …)
+            assertThat(html).doesNotContain("--ribbon:");
+        }
+
+        private Member member(long id, String name, Role role) {
+            return Member.join(id, 1L, 100 + id, 100 + id, name, role, MONDAY.atStartOfDay(MOSCOW).toInstant());
+        }
+    }
+
     @Nested
     class PlateContrast {
 
