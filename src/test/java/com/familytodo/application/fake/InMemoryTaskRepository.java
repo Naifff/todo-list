@@ -53,12 +53,11 @@ public final class InMemoryTaskRepository implements TaskRepository {
                 found.add(task);
             }
         }
-        // тот же порядок, что в SQL: прошедшее событие в конце, дальше по моменту
+        // тот же порядок, что в SQL: строго по моменту, бессрочные в конце
         found.sort(
-                Comparator.<Task, Integer>comparing(task -> isPastEvent(task, query.eventsFrom()))
-                        .thenComparing(
+                Comparator.comparing(
                                 InMemoryTaskRepository::moment,
-                                Comparator.nullsLast(Comparator.naturalOrder()))
+                                Comparator.nullsLast(Comparator.<Instant>naturalOrder()))
                         .thenComparing(Task::id));
         return found;
     }
@@ -194,24 +193,17 @@ public final class InMemoryTaskRepository implements TaskRepository {
         if (query.from() != null && (moment == null || moment.isBefore(query.from()))) {
             return false;
         }
-        // протухшее событие в список не попадает вовсе — то же условие, что в SQL
-        if (query.eventsHiddenBefore() != null && task.startsAt() != null) {
-            Instant over = task.endsAt() != null ? task.endsAt() : task.startsAt();
-            if (over.isBefore(query.eventsHiddenBefore())) {
+        // протухшее в список не попадает вовсе — то же условие, что в SQL, и так же про всё,
+        // у чего есть момент. Дело без даты не протухает: сравнивать его не с чем
+        if (query.staleBefore() != null) {
+            Instant over = task.endsAt() != null ? task.endsAt() : moment;
+            if (over != null && over.isBefore(query.staleBefore())) {
                 return false;
             }
         }
         return query.to() == null || (moment != null && moment.isBefore(query.to()));
     }
 
-    /** Прошедшее событие — то, у которого кончился интервал. У дела со сроком интервала нет. */
-    private static int isPastEvent(Task task, Instant eventsFrom) {
-        if (eventsFrom == null || task.startsAt() == null) {
-            return 0;
-        }
-        Instant over = task.endsAt() != null ? task.endsAt() : task.startsAt();
-        return over.isBefore(eventsFrom) ? 1 : 0;
-    }
 
     /** Момент дела — начало интервала, иначе срок. Совпадает с coalesce в запросе. */
     private static Instant moment(Task task) {

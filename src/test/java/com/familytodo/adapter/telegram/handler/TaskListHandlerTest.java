@@ -146,18 +146,20 @@ class TaskListHandlerTest {
     }
 
     /**
-     * ⚠️ Прошедшее событие уходит в <b>конец</b> списка и помечается — но остаётся в нём.
+     * Прошедшее дело остаётся в списке неделю, помеченное, и стоит на своём месте по времени.
      *
-     * <p>Жалоба была про порядок: «сходить на ролики 14.08 18:30–20:00» стояло в {@code /all}
-     * первым, потому что сортировка по моменту ставит прошедшее впереди всего будущего. Первым
-     * решением такие дела отсекли — и на телефоне тут же выяснилось, чем это стоило: перенести
-     * прошедшее событие на завтра стало нечем, к нему не осталось пути.
+     * <p>История правила в трёх жалобах. Сначала «ролики 14.08» стояли в {@code /all} первыми и
+     * выглядели ближайшим делом — их отсекли; тогда выяснилось, что перенести прошедшее событие
+     * стало нечем, и его вернули, уведя в <b>конец</b> списка. ⚠️ 5 сентября вернулась та же
+     * жалоба с другой стороны: с тридцатью делами хвост в конце читается как сбитая сортировка —
+     * пролистав сентябрь, человек упирается в август. Теперь порядок строго по времени, а «уже
+     * прошло» говорит пометка ⌛, которой в первой жалобе ещё не было.
      */
     @Nested
     class PastEvents {
 
         @Test
-        void yesterdaysEventStaysButGoesLast() {
+        void yesterdaysEventStaysInItsChronologicalPlace() {
             Task event = taskService.create(mom, kid.id(), "Ролики", null);
             event.schedule(
                     mom.asActor(),
@@ -174,7 +176,8 @@ class TaskListHandlerTest {
 
             String text = sender.texts.getFirst();
             assertThat(text).contains("Ролики").contains("⌛");
-            assertThat(text.indexOf("Вынести мусор")).isLessThan(text.indexOf("Ролики"));
+            // вчерашнее стоит раньше завтрашнего: место в списке означает время, и только его
+            assertThat(text.indexOf("Ролики")).isLessThan(text.indexOf("Вынести мусор"));
         }
 
         /** Сегодняшнее остаётся весь день: граница по дню, а не по моменту. */
@@ -206,12 +209,12 @@ class TaskListHandlerTest {
         }
 
         /**
-         * ⚠️ Через три дня протухшее событие уходит из списка совсем: этого достаточно, чтобы
-         * перенести дело, если оно ещё нужно, а дальше оно только копится.
+         * ⚠️ Через неделю протухшее уходит из списка совсем: этого достаточно, чтобы перенести
+         * дело, если оно ещё нужно, а дальше оно только копится.
          */
         @Test
-        void afterThreeDaysTheEventLeavesTheListAltogether() {
-            Instant longAgo = Instant.parse("2026-08-03T16:00:00Z"); // четыре дня назад
+        void afterAWeekTheEventLeavesTheListAltogether() {
+            Instant longAgo = Instant.parse("2026-07-30T16:00:00Z"); // восемь дней назад
             Task event = taskService.create(mom, kid.id(), "Ролики", null);
             event.schedule(
                     mom.asActor(), longAgo, longAgo.plus(java.time.Duration.ofHours(1)), "цирк");
@@ -224,10 +227,10 @@ class TaskListHandlerTest {
             assertThat(sender.texts.getFirst()).contains("Вынести мусор").doesNotContain("Ролики");
         }
 
-        /** На третий день оно ещё здесь: граница по дню события, а не по «примерно неделя». */
+        /** На седьмой день оно ещё здесь: граница по дню дела, а не «примерно неделя». */
         @Test
-        void onTheThirdDayItIsStillThere() {
-            Instant threeDaysAgo = Instant.parse("2026-08-04T16:00:00Z");
+        void onTheSeventhDayItIsStillThere() {
+            Instant threeDaysAgo = Instant.parse("2026-08-01T16:00:00Z");
             Task event = taskService.create(mom, kid.id(), "Ролики", null);
             event.schedule(
                     mom.asActor(),
@@ -242,15 +245,33 @@ class TaskListHandlerTest {
             assertThat(sender.texts.getFirst()).contains("Ролики");
         }
 
-        /** ⚠️ Просроченный срок не протухает никогда: его всё ещё можно сделать. */
+        /**
+         * ⚠️ Просроченный срок протухает наравне с событием, и это отмена прежнего решения.
+         *
+         * <p>Считалось, что просроченное «вынести мусор к 19:00» всё ещё можно сделать, поэтому оно
+         * остаётся навсегда. На проде 5 сентября это дало семнадцать строк середины августа —
+         * «прививка ВПЧ 19.08», «Гастроинтеролог 27.08». К тому же событие от срока отличает не
+         * человек, а разбор: заводя дело с одним временем, он получает срок.
+         */
         @Test
-        void anOldOverdueDeadlineNeverLeaves() {
+        void anOldOverdueDeadlineLeavesToo() {
             taskService.create(mom, kid.id(), "Постирать рюкзаки", Instant.parse("2026-07-01T16:00:00Z"));
             sender.clear();
 
             handler.handle(command(mom, "all"));
 
-            assertThat(sender.texts.getFirst()).contains("Постирать рюкзаки").contains("❗️");
+            assertThat(sender.texts.getFirst()).doesNotContain("Постирать рюкзаки");
+        }
+
+        /** А свежепросроченный срок остаётся — и с восклицательным знаком. */
+        @Test
+        void aRecentlyOverdueDeadlineStays() {
+            taskService.create(mom, kid.id(), "Забрать паспорт", Instant.parse("2026-08-05T16:00:00Z"));
+            sender.clear();
+
+            handler.handle(command(mom, "all"));
+
+            assertThat(sender.texts.getFirst()).contains("Забрать паспорт").contains("❗️");
         }
 
         @Test

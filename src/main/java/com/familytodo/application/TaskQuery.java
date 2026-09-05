@@ -26,8 +26,7 @@ public record TaskQuery(
         Instant from,
         Instant to,
         boolean undatedOnly,
-        Instant eventsFrom,
-        Instant eventsHiddenBefore) {
+        Instant staleBefore) {
 
     /** Прежняя форма без горизонта: подавляющее большинство выборок не про диапазон дат. */
     public TaskQuery(
@@ -36,9 +35,7 @@ public record TaskQuery(
             Long assigneeId,
             Long creatorId,
             Set<TaskStatus> statuses) {
-        this(
-                familyId, visibleToMemberId, assigneeId, creatorId, statuses, null, null, false,
-                null, null);
+        this(familyId, visibleToMemberId, assigneeId, creatorId, statuses, null, null, false, null);
     }
 
     /** Прежняя форма с горизонтом: события отсекать не просили. */
@@ -51,34 +48,35 @@ public record TaskQuery(
             Instant from,
             Instant to,
             boolean undatedOnly) {
-        this(
-                familyId, visibleToMemberId, assigneeId, creatorId, statuses, from, to, undatedOnly,
-                null, null);
+        this(familyId, visibleToMemberId, assigneeId, creatorId, statuses, from, to, undatedOnly, null);
     }
 
     /**
-     * Прошедшие события — <b>в конец списка</b>, а не прочь из него.
+     * Убрать из выборки протухшее — всё, чей момент кончился раньше названного.
      *
-     * <p>Жалоба была про порядок: вчерашние ролики стояли в {@code /all} <b>первыми</b>, потому что
-     * сортировка по моменту ставит прошедшее впереди всего будущего, и вчерашнее выглядело
-     * ближайшим. Первым решением их отсекли — и тут же выяснилось, чем это стоило: прошедшее
-     * событие стало недостижимым, его нельзя открыть, перенести на завтра или закрыть. Экран без
-     * пути к делу — та же ошибка, что кнопка без юзкейса, только наоборот.
+     * <p>⚠️ Правило одно на <b>события и сроки</b>. Прежде оно касалось только событий: считалось,
+     * что просроченное «вынести мусор к 19:00» всё ещё можно сделать, и оно остаётся навсегда.
+     * 5 сентября на проде это дало семнадцать строк середины августа — «прививка ВПЧ 19.08»,
+     * «Гастроинтеролог 27.08», — которые никто уже не закроет. Разницу между событием и сроком
+     * человек к тому же не выбирает: заводя дело с одним временем, он получает срок, и половина
+     * его встреч оказывается по ту сторону правила.
      *
-     * <p>⚠️ Дел <b>со сроком</b> это не касается вовсе: у них {@code starts_at} пуст. Просроченное
-     * «вынести мусор к 19:00» стоит на своём месте по сроку — решение «просроченное с ростом срока
-     * не становится менее важным» в силе.
+     * <p>⚠️ Дело <b>без даты</b> не протухает никогда: «купить хлеб» не обещано ни на какой день,
+     * сравнивать его не с чем.
      *
-     * <p>А через несколько дней такое событие уходит и из списка: трёх дней достаточно, чтобы
-     * перенести дело, если оно ещё нужно. ⚠️ Цена названа прямо — дальше оно остаётся {@code OPEN} в
-     * базе и не показывается ни на одном экране. Это осознанный размен, а не недосмотр.
+     * <p>⚠️ Цена названа прямо: протухшее остаётся {@code OPEN} в базе и не показывается ни на
+     * одном экране. Осознанный размен — если укусит, лечится кнопкой «протухшие», а не отменой
+     * правила.
      *
-     * @param startOfToday начало сегодняшнего дня в зоне семьи; сегодняшнее событие прошедшим не
-     *     считается весь день, как и в дайджесте
-     * @param hiddenBefore событие, кончившееся раньше этого момента, в список не попадает вовсе;
-     *     {@code null} — не прятать
+     * <p>Порядок при этом <b>строго хронологический</b>. Прошедшее уводили в конец списка, чтобы
+     * вчерашнее не выглядело ближайшим делом; с тридцатью делами это стало читаться как сбитая
+     * сортировка — пролистав сентябрь, человек упирался в август. Что дело уже прошло, говорит
+     * пометка ⌛ в строке: когда «в конец» вводили, её ещё не было.
+     *
+     * @param staleBefore дело, кончившееся раньше этого момента, в выборку не попадает;
+     *     {@code null} — не прятать ничего
      */
-    public TaskQuery pastEventsLast(Instant startOfToday, Instant hiddenBefore) {
+    public TaskQuery withoutStale(Instant staleBefore) {
         return new TaskQuery(
                 familyId,
                 visibleToMemberId,
@@ -88,8 +86,7 @@ public record TaskQuery(
                 from,
                 to,
                 undatedOnly,
-                startOfToday,
-                hiddenBefore);
+                staleBefore);
     }
 
     private static final Set<TaskStatus> OPEN_ONLY = EnumSet.of(TaskStatus.OPEN);
@@ -126,7 +123,7 @@ public record TaskQuery(
     public TaskQuery withStatuses(Set<TaskStatus> newStatuses) {
         return new TaskQuery(
                 familyId, visibleToMemberId, assigneeId, creatorId, newStatuses, from, to,
-                undatedOnly, eventsFrom, eventsHiddenBefore);
+                undatedOnly, staleBefore);
     }
 
     /**

@@ -270,27 +270,23 @@ public class JdbcTaskRepository implements TaskRepository {
             sql.append(" and t.starts_at is null and t.due_at is null");
         }
 
-        // ⚠️ А протухшее — то, что кончилось больше трёх дней назад, — из списка уходит совсем:
-        // трёх дней достаточно, чтобы перенести дело, если оно ещё нужно. Условие только про
-        // события: у дела со сроком starts_at пуст, и просроченный срок остаётся навсегда
-        if (query.eventsHiddenBefore() != null) {
-            sql.append(" and (t.starts_at is null or coalesce(t.ends_at, t.starts_at) >= ?)");
-            params.add(query.eventsHiddenBefore().toEpochMilli());
+        // ⚠️ Протухшее уходит из списка совсем — и событие, и дело со сроком. Момент берётся
+        // концом: дело идёт с 18:30 до 20:00 и в 19:00 ещё длится. Дело без даты не протухает
+        // никогда, поэтому «is null» здесь обязателен — без него coalesce вернул бы null,
+        // сравнение дало бы null, и бессрочные дела молча пропали бы из всех списков разом
+        if (query.staleBefore() != null) {
+            sql.append(
+                    " and (coalesce(t.ends_at, t.starts_at, t.due_at) is null"
+                            + " or coalesce(t.ends_at, t.starts_at, t.due_at) >= ?)");
+            params.add(query.staleBefore().toEpochMilli());
         }
 
-        // ⚠️ Прошедшее событие уходит в КОНЕЦ, а не из списка. Сортировка по моменту ставила его
-        // впереди всего будущего, и вчерашнее выглядело ближайшим; отсечь его целиком оказалось
-        // хуже — открыть и перенести стало нечем. Конец интервала, а не начало: дело идёт с 18:30
-        // до 20:00 и в 19:00 ещё длится. Дел со сроком условие не касается — у них starts_at пуст.
-        sql.append(" order by ");
-        if (query.eventsFrom() != null) {
-            sql.append(
-                    "case when t.starts_at is not null"
-                            + " and coalesce(t.ends_at, t.starts_at) < ? then 1 else 0 end, ");
-            params.add(query.eventsFrom().toEpochMilli());
-        }
-        // сначала со сроком по возрастанию, бессрочные в конце
-        sql.append("coalesce(t.starts_at, t.due_at, 9223372036854775807), t.id");
+        // ⚠️ Порядок строго хронологический, без «корзин». Прошедшие события уводили в конец
+        // списка, чтобы вчерашнее не выглядело ближайшим делом, — с тридцатью делами это стало
+        // читаться как сбитая сортировка: пролистав сентябрь, человек упирался в август, а третья
+        // страница начиналась заново со старого. Что дело прошло, говорит пометка ⌛ в строке.
+        // Сначала со сроком по возрастанию, бессрочные в конце
+        sql.append(" order by coalesce(t.starts_at, t.due_at, 9223372036854775807), t.id");
 
         List<TaskRow> rows =
                 jdbc.sql(sql.toString()).params(params).query(TaskRowMapper.INSTANCE).list();

@@ -282,8 +282,17 @@ class TaskRepositoryIT extends AbstractSqliteIT {
      * Прошедшее событие уходит в конец выборки, но остаётся в ней: иначе его нельзя ни открыть, ни
      * перенести. Проверяется на реальном SQL — порядок живёт в запросе.
      */
+    /**
+     * ⚠️ Список — строго хронология, без «корзин».
+     *
+     * <p>Прошедшее событие уводили в конец списка (15 августа), чтобы вчерашнее не выглядело
+     * ближайшим делом. С тридцатью делами это стало читаться как сбитая сортировка: пролистав
+     * сентябрь, человек упирался в август, а на третьей странице список начинался заново со
+     * старого. Отменено 5 сентября: место в списке снова означает время, а «уже прошло» говорит
+     * пометка ⌛ в самой строке — её тогда не было вовсе.
+     */
     @Test
-    void aFinishedEventGoesLastButStays() {
+    void theOrderIsPlainlyChronologicalEvenForAFinishedEvent() {
         Task event = repository.save(dated(100L, "Ролики", "2026-08-20T16:00:00Z"));
         event.schedule(
                 com.familytodo.domain.Actor.member(MOM, FAMILY_A, Role.PARENT),
@@ -296,17 +305,21 @@ class TaskRepositoryIT extends AbstractSqliteIT {
         List<Task> open =
                 repository.find(
                         new TaskQuery(FAMILY_A, null, null, null, OPEN)
-                                .pastEventsLast(Instant.parse("2026-08-07T00:00:00Z"), null));
+                                .withoutStale(Instant.parse("2026-08-01T00:00:00Z")));
 
-        assertThat(open).extracting(Task::title).containsExactly("Вынести мусор", "Ролики");
+        assertThat(open).extracting(Task::title).containsExactly("Ролики", "Вынести мусор");
     }
 
     /**
-     * Протухшее — кончившееся больше трёх дней назад — из выборки уходит совсем. Порядок и это
-     * условие живут в одном запросе, поэтому проверяются на настоящем SQL.
+     * Протухшее уходит из выборки совсем — и <b>событие, и дело со сроком</b>.
+     *
+     * <p>⚠️ Прежде условие касалось только событий: считалось, что просроченный срок всё ещё можно
+     * сделать, и он оставался навсегда. На проде это дало семнадцать строк середины августа,
+     * которые никто уже не закроет: «прививка ВПЧ 19.08», «Гастроинтеролог 27.08». Отменено
+     * 5 сентября — правило одно на всё, что имеет момент.
      */
     @Test
-    void anEventOlderThanTheGraceIsGoneWhileAnOldDeadlineStays() {
+    void anythingOlderThanTheGraceIsGone() {
         Task event = repository.save(dated(100L, "Ролики", "2026-08-20T16:00:00Z"));
         event.schedule(
                 com.familytodo.domain.Actor.member(MOM, FAMILY_A, Role.PARENT),
@@ -315,15 +328,35 @@ class TaskRepositoryIT extends AbstractSqliteIT {
                 "цирк");
         repository.save(event);
         repository.save(dated(101L, "Постирать рюкзаки", "2026-07-01T16:00:00Z"));
+        repository.save(dated(102L, "Забрать паспорт", "2026-08-06T16:00:00Z"));
 
         List<Task> open =
                 repository.find(
                         new TaskQuery(FAMILY_A, null, null, null, OPEN)
-                                .pastEventsLast(
-                                        Instant.parse("2026-08-07T00:00:00Z"),
-                                        Instant.parse("2026-08-04T00:00:00Z")));
+                                .withoutStale(Instant.parse("2026-08-04T00:00:00Z")));
 
-        assertThat(open).extracting(Task::title).containsExactly("Постирать рюкзаки");
+        assertThat(open).extracting(Task::title).containsExactly("Забрать паспорт");
+    }
+
+    /** ⚠️ Дело без даты не протухает никогда: сравнивать его не с чем. */
+    @Test
+    void anUndatedTaskIsNeverStale() {
+        repository.save(
+                Task.create(
+                        103L,
+                        FAMILY_A,
+                        "Разобрать шкаф",
+                        MOM,
+                        new com.familytodo.domain.Assignee(MOM, Role.PARENT),
+                        null,
+                        Instant.parse("2026-07-01T10:00:00Z")));
+
+        List<Task> open =
+                repository.find(
+                        new TaskQuery(FAMILY_A, null, null, null, OPEN)
+                                .withoutStale(Instant.parse("2026-08-04T00:00:00Z")));
+
+        assertThat(open).extracting(Task::title).containsExactly("Разобрать шкаф");
     }
 
     /** Граница по дню: событие, кончившееся сегодня утром, из списка не уходит. */
@@ -340,7 +373,7 @@ class TaskRepositoryIT extends AbstractSqliteIT {
         List<Task> open =
                 repository.find(
                         new TaskQuery(FAMILY_A, null, null, null, OPEN)
-                                .pastEventsLast(Instant.parse("2026-08-06T21:00:00Z"), null));
+                                .withoutStale(Instant.parse("2026-07-31T21:00:00Z")));
 
         assertThat(open).extracting(Task::title).containsExactly("Зарядка");
     }
