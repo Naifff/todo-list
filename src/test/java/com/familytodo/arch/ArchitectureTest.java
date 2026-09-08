@@ -84,6 +84,12 @@ class ArchitectureTest {
                 .check(CLASSES);
     }
 
+    /**
+     * То же и для фоновых задач: напоминания и дайджесты читают данные через юзкейсы, иначе
+     * проверки прав снова окажутся в обход.
+     *
+     * <p>{@code allowEmptyShould} снят: в пакете три задачи, правило проверяет реальные классы.
+     */
     @Test
     void schedulerDoesNotReachPersistenceDirectly() {
         noClasses()
@@ -92,7 +98,6 @@ class ArchitectureTest {
                 .should()
                 .dependOnClassesThat()
                 .resideInAnyPackage("..adapter.persistence..")
-                .allowEmptyShould(true)
                 .check(CLASSES);
     }
 }
